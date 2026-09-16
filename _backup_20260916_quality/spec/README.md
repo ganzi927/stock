@@ -68,9 +68,3 @@
 [70-validation.md](70-validation.md): backtest.py의 탐색 통계 계약.
 
 2026-09 감사 회귀 테스트: `python -m unittest discover -s tests -p test_audit.py -v`.
-
-## 품질 게이트 v2
-
-[80-quality.md](80-quality.md)가 이전 00/10/20/30/40/50/70의 충돌하는 사용범위 규약보다 우선한다. 정합 확인: 2026-09-16. 상태 STABLE(코드·fixture 정합), 실데이터/공식 기준자료 완전성은 미검증.
-
-담당: data_quality.py, reference_data.py, validate_inputs.py 및 각 진입점/리포트/AI.

@@ -14,7 +14,6 @@ from pathlib import Path
 import pandas as pd
 
 import indicators as ind
-from data_quality import attach_indicator_quality, indicator_quality_html, POLICY_VERSION
 from ai_commentary import build_kfgi_prompt, generate_commentary
 from ecos_data import fetch_credit_spread, synthetic_bond10y_index
 from krx_api import fetch_kospi200_option_putcall_one_day, fetch_vkospi_one_day, update_krx_cache
@@ -75,17 +74,6 @@ def generate_fgi_section(as_of: "date | None" = None) -> tuple[str, float, float
     if bond10y is None:  # ECOS 키 없음 → 짧은 ETF 캐시로 폴백
         bond10y = update_cache(CACHE_DIR / "bond10y.csv", fetch_item_history, BOND_ETF_CODE, min_days=HIST_DAYS)
 
-    # 미래 관측이 프록시 선택이나 소스 자격 판단에 영향을 주지 않도록 입력부터 제한.
-    if as_of is not None:
-        kospi200 = _truncate_asof(kospi200, as_of)
-        kospi = _truncate_asof(kospi, as_of)
-        vkospi_raw = _truncate_asof(vkospi_raw, as_of)
-        putcall_raw = _truncate_asof(putcall_raw, as_of)
-        bs_raw = _truncate_asof(bs_raw, as_of)
-        bond10y = _truncate_asof(bond10y, as_of)
-    if kospi200.empty or kospi.empty:
-        raise ValueError("기준일 시세가 없어 공포탐욕지수 생성 불가")
-    anchor = as_of or pd.Timestamp(kospi200['date'].max()).date()
     momentum_df = ind.compute_momentum(kospi200)
     safe_haven_df = ind.compute_safe_haven(kospi200, bond10y)
     credit_spread_df = ind.compute_credit_spread(fetch_credit_spread())
@@ -142,22 +130,9 @@ def generate_fgi_section(as_of: "date | None" = None) -> tuple[str, float, float
             "breadth 대체(지수 방향×거래량 20일 합 — 횡단면 등락폭 아님)" if breadth_is_proxy else "코스피200(시총 상위 200) 상승/하락 거래량 McClellan Volume Oscillator (CNN은 Summation Index; KRX Open API)",
         ),
         ind.latest_result(putcall_df, "Put/Call Ratio", False, "코스피200 지수옵션 거래량 PUT/CALL 5일MA·invert (CNN은 개별주 P/C — 한국엔 없어 지수옵션으로 대체, 기관 헤지 지배로 신호 약함; KRX Open API)"),
-        ind.latest_result(safe_haven_df, "Safe Haven Demand", True, "KOSPI200 20일 수익률 − 합성채권/ETF 가격 수익률 (연구용)"),
+        ind.latest_result(safe_haven_df, "Safe Haven Demand", False, "KOSPI200 20일 수익률 − 국고채10년 ETF 20일 수익률"),
     ]
 
-    quality_sources = {
-        "Momentum": (momentum_df, "네이버 KOSPI200", ["kospi200.close"], None),
-        "Volatility": (volatility_df, "네이버 실현변동성 대체" if volatility_is_proxy else "KRX VKOSPI", ["kospi200.close"] if volatility_is_proxy else ["vkospi"], None),
-        "Credit Spread": (credit_spread_df, "ECOS BBB-/AA- 금리", ["credit_spread"], None),
-        "Strength": (strength_df, "KRX/지수 가격 대체", ["market.close", "market.mktcap"], "수정주가·정확한 구성종목 미검증; 근사 유니버스"),
-        "Breadth": (breadth_df, "KRX/지수 거래량 대체", ["market.fluc_rt", "market.trdvol", "market.mktcap"], "실제 KOSPI200 구성종목 대신 시총 상위 200 근사"),
-        "Put/Call Ratio": (putcall_df, "KRX 정규 옵션 거래량", ["call_volume", "put_volume"], None),
-        "Safe Haven Demand": (safe_haven_df, "ECOS 합성채권 또는 네이버 ETF 가격", ["kospi200.close", "bond_return"], "합성 듀레이션 모형/ETF 분배금 조정 미검증"),
-    }
-    for result in results:
-        series, source, dependencies, reason = quality_sources[result.name]
-        attach_indicator_quality(result, series, anchor, source, dependencies, reason)
-    included = [r.name for r in results if ind._composite_eligible(r)]
     total_score = ind.total_fgi(results)
 
     # 최근 60거래일 TOTAL 추이 (일자별로 각 지표 score를 합쳐 평균)
@@ -175,15 +150,7 @@ def generate_fgi_section(as_of: "date | None" = None) -> tuple[str, float, float
             merged = pd.merge(merged, df[["date", "score"]].rename(columns={"score": name}), on="date", how="left")
     # TOTAL 추이도 indicators.total_fgi 와 동일하게 Credit Spread(매크로 배경) 제외.
     score_cols = [c for c in merged.columns if c not in ("date", "credit_spread")]
-    # 과거 추이도 동일한 소스 정책과 누적 유효 score 워밍업을 사용한다.
-    policy_cols = ["momentum"]
-    if not volatility_is_proxy: policy_cols.append("volatility")
-    policy_cols.append("putcall")
-    eligible_history = pd.DataFrame(index=merged.index)
-    for c in policy_cols:
-        if c in merged:
-            eligible_history[c] = merged[c].where(merged[c].notna().cumsum() >= ind.PCT_WINDOW)
-    merged["total"] = eligible_history.mean(axis=1)
+    merged["total"] = merged[score_cols].mean(axis=1, skipna=True)
     trend = merged.dropna(subset=["total"]).tail(60)
 
     # WORKPLAN Phase 2-3: 지표 score 상관행렬 (등가중의 전제 점검용)
@@ -209,14 +176,10 @@ def generate_fgi_section(as_of: "date | None" = None) -> tuple[str, float, float
         "total": total_score,
         "sentiment": sentiment_score,
         "trend": trend_score,
-        "indicators": {r.name: r.score for r in results if ind._composite_eligible(r)},
-        "included": included,
-        "quality_policy_version": POLICY_VERSION,
-        "quality": {r.name: r.evidence for r in results},
-        "strategy_validated": False,
-    }
+        "indicators": {r.name: r.score for r in results if r.score is not None},
+    } if total_score is not None else None
 
-    commentary = generate_commentary(build_kfgi_prompt(total_score, [r for r in results if ind._composite_eligible(r)], sentiment_score, trend_score))
+    commentary = generate_commentary(build_kfgi_prompt(total_score, results, sentiment_score, trend_score))
 
     section_html = build_fgi_section(
         total_score=total_score,
@@ -229,8 +192,6 @@ def generate_fgi_section(as_of: "date | None" = None) -> tuple[str, float, float
         trend_score=trend_score,
         corr=corr,
     )
-
-    section_html = indicator_quality_html(results, included) + section_html
 
     fgi_as_of = None
     if not kospi200.empty:

@@ -13,8 +13,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from data_quality import option_quality, option_context, wrap_option_section, research_ai_enabled
-from reference_data import dividend_schedule
 from ai_commentary import build_options_prompt, generate_commentary
 from dealer_positioning import analyze, build_scenarios, positioning_skew, risk_reversal_25d, synthetic_forward_by_strike
 from greeks import DIVIDEND_YIELD, RISK_FREE_RATE, probability_of_touch
@@ -24,6 +22,7 @@ from options_data import fetch_risk_free_rate
 from options_main import _atm_iv, _update_iv_rank_cache
 from options_report import build_html, build_section_html
 from outlook import section_facts
+from dividends import dividends_in_window
 from stock_options_data import STOCK_DIV_YIELD, STOCK_UNDERLYINGS, fetch_stock_option_chain
 
 BASE_DIR = Path(__file__).parent
@@ -60,9 +59,8 @@ def build_stock_option_section(name: str, isu_cd: str, bas_dd: str, as_of: date,
     # 환산해 옵션 잔존기간에 대한 **등가 연속수익률**로 쓴다(B1). 없으면 종목별 평상시
     # 상수(STOCK_DIV_YIELD). 지수의 1.5% 상속은 폐기.
     q_base = STOCK_DIV_YIELD.get(name, DIVIDEND_YIELD)
-    confirmed_divs, complete, dividend_reasons = dividend_schedule(name, as_of, expiry)
-    divs = [(d["pay_date"], d["amount"]) for d in confirmed_divs]
-    if complete:
+    divs = dividends_in_window(name, as_of, expiry)
+    if divs:
         import math
 
         pv_div = sum(amt * math.exp(-r * (max((d - as_of).days, 0) / 365)) for d, amt in divs)
@@ -72,23 +70,7 @@ def build_stock_option_section(name: str, isu_cd: str, bas_dd: str, as_of: date,
         q = q_base
         q_note = f"q={q*100:.2f}%(종목별 평상시 가정, 현금배당)"
 
-    title = f"{name} 옵션"
-    quality = option_quality(chain, spot, as_of, "시장 금리 근사" if r_market is not None else "상수 r 가정", q_note)
-    quality['inputs']['q']['reasons'].extend(dividend_reasons)
-    for metric in quality['metrics'].values():
-        if 'q' in metric['dependencies']:
-            metric['reasons'].extend('q: '+reason for reason in dividend_reasons)
-    quality['dividend_records'] = [{k:(v.isoformat() if isinstance(v,date) else v) for k,v in d.items()} for d in confirmed_divs]
-    facts = option_context(title, chain, spot, as_of, quality)
-    if not quality['model_usable']:
-        return wrap_option_section(facts), facts
-    try:
-        levels, chain_g, profile, dex_prof, vanna_prof = analyze(chain, spot, as_of, r=r, q=q, multiplier=multiplier)
-    except (ValueError, FloatingPointError) as exc:
-        quality['model_usable'] = False
-        quality['errors'].append('그릭스 입력 검증 실패: '+str(exc))
-        return wrap_option_section(facts,error=quality['errors'][-1]), facts
-    quality['iv_methods'] = {str(k):int(v) for k,v in chain_g.iv_method.value_counts().items()}
+    levels, chain_g, profile, dex_prof, vanna_prof = analyze(chain, spot, as_of, r=r, q=q, multiplier=multiplier)
     scenarios = build_scenarios(levels)
 
     net_dex = float(chain_g["dex"].sum())
@@ -118,7 +100,7 @@ def build_stock_option_section(name: str, isu_cd: str, bas_dd: str, as_of: date,
     title = f"{name} 옵션"
     commentary = generate_commentary(
         build_options_prompt(title, spot, levels, net_dex, net_vex, net_charm, scenarios, pot=pot, risk_reversal=risk_reversal, positioning_skew=skew)
-    ) if research_ai_enabled() else None
+    )
 
     html = build_section_html(
         title=title,
@@ -140,7 +122,8 @@ def build_stock_option_section(name: str, isu_cd: str, bas_dd: str, as_of: date,
         synth_df=synth_df,
         positioning_skew=skew,
     )
-    return wrap_option_section(facts, html), facts
+    facts = section_facts(title, expiry_label, spot, levels, scenarios, net_dex, net_vex, net_charm, risk_reversal, skew, pot)
+    return html, facts
 
 
 def generate_stock_options_sections(bas_dd: str | None = None, as_of: date | None = None) -> tuple[list[str], list[dict]]:

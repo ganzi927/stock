@@ -12,7 +12,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from data_quality import option_quality, option_context, wrap_option_section, research_ai_enabled
 from ai_commentary import build_options_prompt, generate_commentary
 from dealer_positioning import analyze, build_scenarios, count_sign_overrides_used, implied_dividend_yield, implied_forward_from_chain, positioning_skew, risk_reversal_25d, synthetic_forward_by_strike
 from dividends import index_exdiv_in_window
@@ -127,24 +126,10 @@ def build_product_section(
     if chain.empty:
         return None
 
-    preflight = option_quality(chain, spot, as_of, "미평가", "미평가")
-    if not preflight['model_usable']:
-        facts = option_context(title, chain, spot, as_of, preflight)
-        return wrap_option_section(facts), facts
     expiry = chain["expiry"].iloc[0]
     r, q, r_is_market, q_source = _resolve_rq(spot, as_of, expiry, r_market, futures, chain)
 
-    quality = option_quality(chain, spot, as_of, "시장 금리 근사" if r_is_market else "상수 r 가정", q_source)
-    facts = option_context(title, chain, spot, as_of, quality)
-    if not quality['model_usable']:
-        return wrap_option_section(facts), facts
-    try:
-        levels, chain_g, profile, dex_prof, vanna_prof = analyze(chain, spot, as_of, r=r, q=q, sign_overrides=sign_overrides)
-    except (ValueError, FloatingPointError) as exc:
-        quality['model_usable'] = False
-        quality['errors'].append('그릭스 입력 검증 실패: '+str(exc))
-        return wrap_option_section(facts, error=quality['errors'][-1]), facts
-    quality['iv_methods'] = {str(k): int(v) for k,v in chain_g.iv_method.value_counts().items()}
+    levels, chain_g, profile, dex_prof, vanna_prof = analyze(chain, spot, as_of, r=r, q=q, sign_overrides=sign_overrides)
     scenarios = build_scenarios(levels)
 
     net_dex = float(chain_g["dex"].sum())
@@ -186,7 +171,7 @@ def build_product_section(
     synth_df = synthetic_forward_by_strike(chain, r, q, t_years)
 
     commentary = None
-    if with_commentary and research_ai_enabled():
+    if with_commentary:
         commentary = generate_commentary(
             build_options_prompt(
                 title, spot, levels, net_dex, net_vex, net_charm, scenarios,
@@ -216,7 +201,8 @@ def build_product_section(
         synth_df=synth_df,
         positioning_skew=skew,
     )
-    return wrap_option_section(facts, html), facts
+    facts = section_facts(title, expiry_label, spot, levels, scenarios, net_dex, net_vex, net_charm, risk_reversal, skew, pot)
+    return html, facts
 
 
 def _build_investor_flow_note() -> str | None:

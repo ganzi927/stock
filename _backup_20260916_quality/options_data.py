@@ -14,7 +14,6 @@ import pandas as pd
 import requests
 
 from krx_api import BASE_URL, HEADERS_KEY
-from reference_data import apply_expiry_evidence
 
 REGULAR_PROD = "코스피200 옵션"
 WEEKLY_THU_PROD = "코스피200 위클리(목) 옵션"
@@ -103,7 +102,6 @@ def fetch_option_chain(bas_dd: str, prod_nm: str) -> pd.DataFrame:
     # 제외하고 그 다음 만기를 쓴다 — 위클리는 목요일이 만기라 목요일에 돌리면 T-0
     # 시리즈를 잡던 버그가 있었다 (RECONCILIATION.md O2).
     as_of = date(int(bas_dd[:4]), int(bas_dd[4:6]), int(bas_dd[6:8]))
-    df = apply_expiry_evidence(df, prod_nm, as_of)
     future = df[df["expiry"] > as_of]
     if future.empty:
         return df.iloc[:0].copy()

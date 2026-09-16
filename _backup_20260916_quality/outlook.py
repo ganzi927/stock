@@ -105,33 +105,30 @@ def _fmt_fgi(fgi: dict) -> str:
     if trend is None or sentiment is None or total is None:
         return "공포탐욕: 서브지수 계산 불가(데이터 부족).\n" + detail
     lines = [
-        f"공포탐욕: 추세지수 {trend:.0f} / 투심지수 {sentiment:.0f} / 참고 TOTAL {total:.0f}",
-        "투심 낮음=평활 변동성·풋콜 거래량비 높음; 높음=그 반대. 매매 방향은 미검증.",
-        "사용 구성: " + ", ".join(fgi.get("included", list(fgi.get("indicators", {})))),
+        f"공포탐욕: 추세지수 {trend:.0f} / 투심지수 {sentiment:.0f}  "
+        f"(참고용 CNN식 TOTAL {total:.0f}, 6개 등가중 — 순행·역행 상쇄값이라 단독 판단 금지)",
+        "  (추세=Momentum + (Strength·Breadth) 순행 / 투심=Volatility·Put-Call 역행: 투심 낮음=평활 변동성·풋콜 거래량비 높음(공포 측), "
+        "높음=평활 변동성·풋콜 거래량비 낮음(탐욕 측). 이 방향성의 예측력은 백테스트 미입증 — VALIDATION.md. Credit Spread는 매크로 배경으로 합성 미포함)",
         detail,
     ]
     return "\n".join(lines)
 
 
 def _fmt_opt(f: dict) -> str:
-    # Explicit allowlist: nested quality/research payload never reaches the model.
-    if f.get('usage') != 'context':
-        return ""
-    out = [f"[{f['title']}] 기준일 {f['as_of']}"]
-    if f.get('spot') is not None: out.append(f"기초자산 {f['spot']:,.1f}")
-    allowed = ('call_oi','put_oi','call_volume','put_volume')
-    for key in allowed:
-        value=f.get('observations',{}).get(key)
-        if isinstance(value,(int,float)): out.append(f"{key}: {value:,.0f}")
-    out.append("위 수량은 방향성·딜러 순포지션을 식별하지 못한다.")
+    out = [f"[{f['title']}]  {f['expiry_label']}", f"  현재가 {f['spot']:,.1f}"]
+    if f["levels"]:
+        out.append("  레벨: " + " | ".join(f["levels"]))
+    if f["rr"]:
+        out.append("  " + f["rr"])
+    if f["skew"]:
+        out.append("  " + f["skew"])
+    out.append("  " + f["flow"])
+    if f["scenarios"]:
+        out.append("  시나리오: " + " ; ".join(f["scenarios"]))
     return "\n".join(out)
 
 
 def build_outlook_prompt(as_of: date, fgi: dict, opt_facts: list[dict]) -> str:
-    eligible = {k:v for k,v in fgi.get('indicators',{}).items()
-                if fgi.get('quality',{}).get(k,{}).get('usage') == 'context' and k in fgi.get('included', [])}
-    fgi = dict(fgi, indicators=eligible, included=list(eligible))
-    opt_facts = [f for f in opt_facts if f.get('usage') == 'context' and f.get('as_of') == as_of.isoformat()]
     parts = [
         f"기준일 {as_of.isoformat()}. 아래는 오늘 마감 기준 세 가지 분석의 핵심 수치다.",
         "",
@@ -143,7 +140,7 @@ def build_outlook_prompt(as_of: date, fgi: dict, opt_facts: list[dict]) -> str:
         parts.append(_fmt_opt(f))
         parts.append("")
     parts.append(
-        "제공된 지표의 현재 상태와 관측 수량만 설명하라. 연구용 옵션 레벨은 입력에 없으므로 만들지 말라. OI는 롱/숏 소유자를 식별하지 못한다. "
+        "현재 상태와 상단·하단 관찰 레벨을 설명하라. OI는 롱/숏 소유자를 식별하지 못한다. "
         "Wall 위치만으로 헤지 방향·지지·저항·돌파 후 가속을 추론하지 말라. "
         "Zero Gamma의 전역 부호 반전 불변성은 계약별 부호 변경에는 성립하지 않는다. "
         "MaxPain은 최소 내재가치 계산이지 수렴 예측이 아니다. "
@@ -176,8 +173,9 @@ def build_outlook_section(as_of: date, fgi: dict | None, opt_facts: list[dict]) 
     body = _html.escape(text).replace("\n\n", "</p><p>").replace("\n", "<br/>")
     return f"""
     <div class="section-block">
-      <h2>종합 상태 — 판단용 맥락</h2>
-      <div class="info-banner">아래는 품질 게이트를 통과한 관측 맥락만 Claude가 종합한 것입니다. 연구용 가정값은 제외했으며 방향 예측·투자 조언이
+      <h2>종합 전망 — 내일 시나리오</h2>
+      <div class="info-banner">아래는 위 3개 탭의 수치를 Claude가 종합한 것입니다. 레벨 이탈 시
+      딜러 헤지 구조가 어느 방향으로 작동하는지에 대한 <b>구조 설명</b>이며 방향 예측·투자 조언이
       아닙니다. 기준일 {as_of.isoformat()} 마감 데이터.</div>
       {warn_html}
       <div class="ai-note" style="font-size:14px;line-height:1.85"><p>{body}</p></div>

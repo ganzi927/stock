@@ -51,9 +51,7 @@ def fill_iv_smile(chain: pd.DataFrame, spot: float | None = None) -> pd.DataFram
     ref = float(spot) if spot else float(df["strike"].median())
     lm = np.log(df["strike"].to_numpy(dtype=float) / ref)
     strike = df["strike"].to_numpy(dtype=float)
-    iv = df["iv"].to_numpy(dtype=float, copy=True)
-    df["iv_original"] = iv.copy()
-    provenance = np.where(np.isfinite(iv) & (iv > 0), "observed", "missing").astype(object)
+    iv = df["iv"].to_numpy(dtype=float)
     ok = np.isfinite(iv) & (iv > 0)
     typ = df["type"].to_numpy()
 
@@ -62,7 +60,6 @@ def fill_iv_smile(chain: pd.DataFrame, spot: float | None = None) -> pd.DataFram
         mate = ok & (strike == strike[i]) & (typ != typ[i])
         if mate.any():
             iv[i] = iv[mate][0]
-            provenance[i] = "paired"
     ok = np.isfinite(iv) & (iv > 0)
 
     # 2) 타입별 스마일 보간 + 기울기 외삽
@@ -72,19 +69,15 @@ def fill_iv_smile(chain: pd.DataFrame, spot: float | None = None) -> pd.DataFram
         need = m & ~ok
         if k.sum() >= 2:
             iv[need] = _interp_extrap(lm[need], lm[k], iv[k])
-            provenance[need] = np.where((lm[need] < lm[k].min()) | (lm[need] > lm[k].max()), "extrapolated", "interpolated")
         elif k.sum() == 1:
             iv[need] = iv[k][0]
-            provenance[need] = "constant"
 
     # 3) 최후수단: 타입에 관측이 <2개면 전체 중앙값
     still_bad = ~(np.isfinite(iv) & (iv > 0))
     if still_bad.any():
         good = np.isfinite(iv) & (iv > 0)
         iv[still_bad] = np.median(iv[good]) if good.any() else np.nan
-        provenance[still_bad] = "constant" if good.any() else "missing"
     df["iv"] = iv
-    df["iv_method"] = provenance
     return df
 
 

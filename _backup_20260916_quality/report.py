@@ -258,18 +258,19 @@ def build_fgi_section(
       <div class="hero" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
         <div><img src="data:image/png;base64,{trend_gauge}"/>
           <div class="score-line"><span class="badge" style="background:{t_bg};color:{t_text}">{zone_label(trend_score)}</span></div>
-          <div class="card-note">추세지수 · 실제 사용 구성은 데이터 상태 표 참고</div></div>
+          <div class="card-note">Momentum·Strength·Breadth · 순행(높을수록 상승추세)</div></div>
         <div><img src="data:image/png;base64,{sent_gauge}"/>
           <div class="score-line"><span class="badge" style="background:{s_bg};color:{s_text}">{zone_label(sentiment_score)}</span></div>
           <div class="card-note">Volatility·Put/Call · 역행 지표(높음 = 변동성·풋수요 낮음)</div></div>
       </div>
       <div class="card-note" style="margin:12px 0 20px">{combo}.<br/>
-      <b>검증 주의</b> — 데이터 품질 조건을 충족한 지표만 합성합니다. 예측력은 별도 검증 전이며 구성은 위 상태표를 확인하세요.<br/>
-      <b>참고(CNN 비교용) TOTAL {total_str}</b> — 가용한 판단용 지표의 평균(구성은 데이터 상태 표 참고).
+      <b>검증 주의</b> — 출시되는 투심지수는 mean(Volatility, Put/Call) 2개이며 이 조합은 VALIDATION.md에
+      백테스트가 없다. 두 구성요소를 개별로 보면 IC 90% 신뢰구간이 모두 0을 포함(예측력 미입증)하고,
+      추세지수도 20/60일 시계에서 신뢰구간이 0을 포함한다. 이 게이지들은 <b>상태 readout</b>이지 매매 신호가 아니다.<br/>
+      <b>참고(CNN 비교용) TOTAL {total_str}</b> — 6개 등가중(Credit Spread는 매크로 배경으로 분리).
       순행·역행이 섞여 상쇄되므로 단일 타이밍 툴로 쓰지 말 것 (VALIDATION.md).</div>"""
 
     cards_html = ""
-    research_cards_html = ""
     for r in results:
         bg, text = zone_colors_css(r.score)
         zone = zone_label(r.score)
@@ -283,7 +284,7 @@ def build_fgi_section(
         if getattr(r, "low_confidence", False):
             proxy_tag += '<span class="proxy">합성 제외 · 점수화 히스토리 &lt;1년</span>'
         since_txt = f" · 점수화 시작 {r.scored_since}" if getattr(r, "scored_since", None) else ""
-        card_html = f"""
+        cards_html += f"""
         <div class="card">
           <div class="card-top">
             <div class="card-name">{r.name}{proxy_tag}</div>
@@ -294,11 +295,6 @@ def build_fgi_section(
           <div class="card-raw">raw {raw_str}</div>
           <div class="card-note">{r.note}{since_txt}</div>
         </div>"""
-        if r.evidence and r.evidence.get('usage') == 'research':
-            research_cards_html += card_html
-        else:
-            cards_html += card_html
-
 
     commentary_html = ""
     if commentary:
@@ -326,8 +322,7 @@ def build_fgi_section(
       <h2>세부 지표</h2>
       <div class="card-grid">{cards_html}</div>
 
-      <details class="research-panel"><summary>연구용 지표 — 기본 합성·AI에서 제외</summary><div class="card-grid">{research_cards_html}</div></details>
-      <h2>지표별 상세 추이 (연구 참고)</h2>
+      <h2>지표별 상세 추이</h2>
       {detail_html}
 
       <div class="footer">

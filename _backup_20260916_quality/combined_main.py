@@ -84,11 +84,6 @@ def _bump_pending(pending_path: Path) -> int:
     return data["attempts"]
 
 
-def _report_is_current(meta: dict) -> bool:
-    from data_quality import POLICY_VERSION
-    return bool(meta.get("options_complete")) and meta.get("quality_policy_version") == POLICY_VERSION
-
-
 def main() -> None:
     ap = argparse.ArgumentParser(description="KFGI + 옵션 통합 리포트 생성")
     ap.add_argument(
@@ -114,7 +109,7 @@ def main() -> None:
     pending_path = REPORTS_DIR / f"{anchor.isoformat()}.pending.json"
 
     # 멱등 가드: 같은 anchor의 완결 리포트가 이미 있으면 아무것도 안 한다(AI 재호출 방지).
-    if not args.force and out_path.exists() and _report_is_current(_read_meta(meta_path)):
+    if not args.force and out_path.exists() and _read_meta(meta_path).get("options_complete"):
         print(f"이미 완결된 리포트가 있습니다: {out_path}  (재생성하려면 --force)")
         sys.exit(EXIT_OK)
 
@@ -161,7 +156,7 @@ def main() -> None:
     # 4번째 탭: 세 섹션 종합 + 내일 시나리오 (ANTHROPIC_API_KEY 없으면 None → 탭 생략)
     outlook_html = build_outlook_section(anchor, fgi_facts, option_facts + stock_facts)
     if outlook_html:
-        tabs.append(("outlook", "종합 상태", outlook_html))
+        tabs.append(("outlook", "종합 전망", outlook_html))
 
     html = build_page_shell(
         report_date=anchor,
@@ -174,10 +169,7 @@ def main() -> None:
     REPORTS_DIR.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
 
-    from data_quality import POLICY_VERSION
     meta = {
-        "quality_policy_version": POLICY_VERSION,
-        "quality": {"fgi": (fgi_facts or {}).get("quality", {}), "options": [{"title": f["title"], "quality": f["quality"]} for f in option_facts + stock_facts]},
         "anchor": anchor.isoformat(),
         "fgi_as_of": fgi_as_of.isoformat() if fgi_as_of else None,
         "option_bas_dd": opt_bas_dd.isoformat() if opt_bas_dd else None,

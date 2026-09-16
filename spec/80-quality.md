@@ -1,0 +1,16 @@
+# 80 · 데이터 품질과 사용 범위
+
+이 사양은 00/10/20/30/40/50/70의 충돌하는 과거 규약보다 우선한다.
+
+- REQ-Q-1: 각 입력/출력은 source, as_of, available_at, kind, reasons, dependencies를 갖는다. 상태는 observed(기준일 관측), estimated(가정), missing, stale, invalid. 관측 상태는 예측력 검증과 다르다. available_at 미확인은 백테스트 체결 가능시각으로 추정하지 않는다.
+- REQ-Q-2: 판단용 합성은 기준일 일치·유한·충분한 warmup·비프록시 결과만 포함한다. 미확인 기업행동/정확한 구성종목을 사용하는 Strength/Breadth, 합성 채권/분배금 미반영 ETF Safe Haven은 연구용이다. 구성 이름과 제외 사유를 노출한다. 가용 항목이 없으면 None, 0 대체 금지. 과거 추이에도 같은 자격을 적용한다.
+- REQ-Q-3: 입력 결측/노후화는 의존 지표에 전파한다. latest_result는 오래된 점수를 현재 점수로 승격하지 않는다.
+- REQ-Q-4: 옵션 관측 요약(OI/거래량)은 판단용 맥락, 부호·r/q·만기·IV 가정에 의존하는 모델은 접힌 연구용 영역이다. signed exposure·Zero Gamma·PoT·Wall은 기본 AI에 전달하지 않는다. 모델 입력 불량이면 해당 계산만 생략하고 사유·관측 요약은 유지한다.
+- REQ-Q-5: IV 원본과 observed/paired/interpolated/extrapolated/constant/missing 표식을 보존한다. OI 가중 원본 IV 커버리지를 기록한다.
+- REQ-Q-6: reference_data.json은 공식 URL, 확인 근거, 공개시각이 있는 만기/배당 기록을 제공한다. 공개시각 이후에만 사용한다. 미확보 만기는 명목 요일 계산임을 표시하고 연구용으로만 사용한다. 배당은 배당락일·지급일·금액을 분리하고, 완전성 선언이 없으면 누락=0으로 간주하지 않는다. 기존 하드코딩 배당을 확인된 값으로 사용하지 않는다.
+- REQ-Q-7: 기본 AI는 판단용 allowlist만 직렬화한다. 연구용 AI는 KFGI_RESEARCH_AI=1일 때만 연구 탭 내부에 별도 표시한다. KFGI_AI=0은 모두 차단한다.
+- REQ-Q-8: meta.json에 quality_policy_version 및 입력/의존 지표별 상태를 저장한다. 구버전 meta로 멱등 종료하지 않는다.
+- REQ-Q-9: 기존 IC는 연구용 탐색으로 유지하고 결과에 운영 판단용 구성과 다른 것을 명시한다. 매매대상/보유기간/비용은 임의 확정하지 않는다.
+- AC-Q: 결측·stale·프록시 합성 제외, 미래 공시 배제, 만기 정정, IV provenance, 기본 AI에 연구용 값 미노출, all-IV-missing 복구, meta 버전 가드를 네트워크 없는 fixture로 검증한다.
+
+- REQ-Q-10: P/C 원자료는 정규세션만 집계한다. 야간세션 중복 포함 금지.

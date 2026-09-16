@@ -182,9 +182,7 @@ def run(start: str | None, write_md: bool) -> None:
         print(s)
         lines.append(s)
 
-    P(f"# KFGI 탐색적 연관성 검증 (VALIDATION)")
-    P("> 연구용 기존 6/7개 구성의 IC 분석입니다. 품질 게이트 적용 후 운영 합성지수의 성과 검증이 아닙니다.")
-    P("> 원자료 공개시각 미확인: 체결 가능한 전략 백테스트로 승인되지 않았습니다.")
+    P(f"# KFGI 예측력 검증 (VALIDATION)")
     P()
     P(f"생성: `python backtest.py`{' --start ' + start if start else ''}  ·  부트스트랩 B={B} (stationary bootstrap)")
     P(f"구간: {full['date'].min().date()} ~ {full['date'].max().date()}  ({len(full)} 거래일)")

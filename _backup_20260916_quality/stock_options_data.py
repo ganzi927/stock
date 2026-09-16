@@ -14,7 +14,6 @@ import pandas as pd
 import requests
 
 from krx_api import BASE_URL, HEADERS_KEY
-from reference_data import apply_expiry_evidence
 from options_data import _nth_weekday
 
 STOCK_UNDERLYINGS = {
@@ -91,7 +90,6 @@ def fetch_stock_option_chain(bas_dd: str, underlying_name: str) -> pd.DataFrame:
         return df
     # 기준일 당일(T-0)/만료 시리즈는 제외하고 다음 만기 사용 (RECONCILIATION.md O2)
     as_of = date(int(bas_dd[:4]), int(bas_dd[4:6]), int(bas_dd[6:8]))
-    df = apply_expiry_evidence(df, prod_nm, as_of)
     future = df[df["expiry"] > as_of]
     if future.empty:
         return df.iloc[:0].copy()

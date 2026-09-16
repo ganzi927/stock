@@ -50,7 +50,7 @@ def fetch_vkospi_one_day(bas_dd: str) -> float | None:
 def fetch_kospi200_option_putcall_one_day(bas_dd: str) -> float | None:
     """코스피200 옵션(정규) 거래량 기준 Put/Call Ratio = PUT거래량 / CALL거래량."""
     data = _get("drv/opt_bydd_trd", bas_dd)
-    rows = [r for r in data.get("OutBlock_1", []) if r["PROD_NM"] == "코스피200 옵션" and "(정규)" in r.get("ISU_NM", "")]
+    rows = [r for r in data.get("OutBlock_1", []) if r["PROD_NM"] == "코스피200 옵션"]
     if not rows:
         return None
     call_vol = sum(int(r["ACC_TRDVOL"]) for r in rows if r["RGHT_TP_NM"] == "CALL")

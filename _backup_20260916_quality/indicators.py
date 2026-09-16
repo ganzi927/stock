@@ -38,7 +38,6 @@ class IndicatorResult:
     low_confidence: bool = False  # 점수화 히스토리가 1년 미만 → 백분위 기준이 얇음 (합성 제외)
     scored_since: str | None = None  # 이 지표가 점수화되기 시작한 날짜(YYYY-MM-DD)
     score_ci: float | None = None  # 백분위 표본오차 95% 반폭(점). 유한 창(n)에서 오는 불확실성
-    evidence: dict | None = None  # 출처·기준일·종류·의존성·사용범위
 
 
 # 롤링 창이 이만큼 차기 전에는 백분위 점수를 내지 않는다(N/A). 예전엔 20이었는데,
@@ -255,9 +254,7 @@ MACRO_BACKDROP = {"Credit Spread"}
 
 
 def _composite_eligible(r: IndicatorResult) -> bool:
-    return (r.score is not None and np.isfinite(r.score) and r.name not in MACRO_BACKDROP
-            and not r.low_confidence and not r.is_proxy
-            and (r.evidence is None or r.evidence.get("usage") == "context"))
+    return r.score is not None and r.name not in MACRO_BACKDROP and not r.low_confidence
 
 
 def total_fgi(results: list[IndicatorResult]) -> float | None:

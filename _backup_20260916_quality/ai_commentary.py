@@ -96,19 +96,19 @@ def build_kfgi_prompt(
     sentiment_score: float | None = None,
     trend_score: float | None = None,
 ) -> str:
-    lines = ["판단용 구성: " + ", ".join(r.name for r in results)]
+    lines = []
     if total_score is not None:
         lines.append(f"오늘 한국형 공포탐욕지수(KFGI) 총점: {total_score:.1f}점/100점 (전부 0~100, 높을수록 탐욕).")
     if sentiment_score is not None and trend_score is not None:
         lines.append(
-            f"두 성격으로 나눈 값: 추세지수 {trend_score:.0f}점(현재 품질 게이트 통과 구성만 사용), "
+            f"두 성격으로 나눈 값: 추세지수 {trend_score:.0f}점(Momentum·Strength·Breadth — 높으면 상승추세), "
             f"투심지수 {sentiment_score:.0f}점(Volatility·Put/Call — 이 2개는 역행 지표라 점수가 높다는 건 "
             f"평활 변동성·풋콜 거래량비가 자기 과거 대비 낮다는 뜻이며, 낮은 점수는 그 반대). "
             f"Credit Spread(회사채 BBB−AA)는 매크로 신용 배경으로만 참고하고 이 두 지수에는 넣지 않음."
         )
         lines.append(
             "주의: 이 두 지수(및 그 조합)가 이후 수익률을 예측한다는 것은 이 프로젝트의 백테스트에서 "
-            "입증되지 않았다. 기존 VALIDATION.md는 연구용 구성의 과거 분석이며 현재 판단용 구성의 검증이 아니다. "
+            "입증되지 않았다 — VALIDATION.md 기준 대부분 지표의 IC 90% 신뢰구간이 0을 포함한다. "
             "'이 조합이면 오른다/내린다', '수익률이 좋았다/나빴다' 식 서술은 하지 말고 현재 상태만 설명하라."
         )
     lines.append("세부 지표 (Credit Spread는 매크로 배경 — 총점/투심에 미포함):")
