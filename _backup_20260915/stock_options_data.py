@@ -91,9 +91,8 @@ def fetch_stock_option_chain(bas_dd: str, underlying_name: str) -> pd.DataFrame:
     # 기준일 당일(T-0)/만료 시리즈는 제외하고 다음 만기 사용 (RECONCILIATION.md O2)
     as_of = date(int(bas_dd[:4]), int(bas_dd[4:6]), int(bas_dd[6:8]))
     future = df[df["expiry"] > as_of]
-    if future.empty:
-        return df.iloc[:0].copy()
-    df = future
+    if not future.empty:
+        df = future
     nearest_expiry = df["expiry"].min()
     df = df[df["expiry"] == nearest_expiry].reset_index(drop=True)
     return df

@@ -165,9 +165,7 @@ def compute_breadth_and_strength_raw(market_df: pd.DataFrame) -> pd.DataFrame:
     # Breadth: 유니버스 내 상승/하락 거래량 비율
     up = uni_df[uni_df["fluc_rt"] > 0].groupby("date")[vol_col].sum()
     down = uni_df[uni_df["fluc_rt"] < 0].groupby("date")[vol_col].sum()
-    dates = pd.Index(sorted(uni_df["date"].unique()), name="date")
-    up, down = up.reindex(dates, fill_value=0), down.reindex(dates, fill_value=0)
-    breadth = ((up - down) / (up + down).replace(0, np.nan)).rename("breadth_raw")
+    breadth = ((up - down) / (up + down)).rename("breadth_raw")
 
     # 52주 신고가/신저가는 전 종목의 전체 가격 히스토리로 계산해야 정확하다.
     wide = market_df.pivot_table(index="date", columns="ISU_CD", values="close")

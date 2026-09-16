@@ -24,12 +24,13 @@ SYSTEM_PROMPT = (
     "설명 — 숫자를 새로 만들거나 추측하지 말 것.\n"
     "금지: 매수·매도 추천, 방향 예측 확언('오를 것이다' 등), '외국인은 이렇게 할 것이다' "
     "식 미래 행동 예측, 투자 조언으로 읽힐 문장. 당신은 투자 자문가가 아님.\n"
-    "PoT는 상수 IV GBM 모형 아래 해당 옵션 만기까지의 위험중립 터치확률이다. "
-    "실제 확률·익일 확률·서로 배타적인 시나리오 확률로 해석하거나 합산하지 말 것.\n"
-    "총 OI와 당일 순매매는 실제 딜러 순포지션을 식별하지 못한다. "
-    "Wall 위치만으로 딜러 헤지 방향·지지·저항을 추론하지 말 것. "
-    "전역 부호 반전은 영점 위치를 보존하지만 계약별 부호 변경에는 위치도 바뀐다. "
-    "실제 매매 동향은 관측 사실로만 인용할 것.\n"
+    "PoT·시나리오 확률은 반드시 '위험중립 확률(옵션 가격에 내재된 값이며 실제로 그렇게 될 "
+    "확률과는 리스크 프리미엄만큼 다름)'이라고 성격을 밝혀 인용할 것 — '옵션시장이 내재한 "
+    "확률은 몇 %' 는 되지만 '몇 % 확률로 도달한다'는 사실 단정 금지.\n"
+    "딜러 헤지 방향(매수/매도, 가속/완충)은 미국시장 기준 가정이고 한국시장에선 반대일 수 "
+    "있다 — 반드시 '이 부호 가정이 맞다면' 같은 조건부로만 설명하고, 레벨의 위치 자체는 "
+    "부호 가정과 무관하게 유효하다는 점을 구분해 말할 것. 실제 투자자 매매 데이터는 '오늘 "
+    "실제 이랬다'로만 인용, 미래 예측 금지.\n"
     "전문용어는 짧게 풀이. 숫자 나열 대신 의미 설명. 한국어 존댓말, 이모지 금지, "
     "마크다운(**, #, - 등) 금지 — 순수 텍스트만(렌더러 없이 그대로 표시됨). "
     "분량은 사용자 메시지의 지시를 따르고, 문장 중간에 끊기지 않게 완결된 문장으로 마무리."
@@ -54,7 +55,9 @@ def generate_commentary(user_content: str, max_tokens: int = 1500) -> str | None
             json={
                 "model": MODEL,
                 "max_tokens": max_tokens,
-                # 재서술 변동을 줄인다. temperature=0도 바이트 동일성을 보장하지 않는다.
+                # 사실 재진술·구조 설명이므로 결정론이 맞다 — 같은 입력이면 같은 리포트가
+                # 나와야 "어제 대비 뭐가 바뀌었나"를 비교할 수 있다 (temperature 미설정 시
+                # 기본 1.0이라 매 실행 서술·강조 레벨이 요동쳤음).
                 "temperature": 0,
                 # 한 번 실행에 5번(KFGI 1 + 코스피200 2 + 개별주식 2) 호출하는데 시스템
                 # 프롬프트가 매번 동일하므로 캐싱하면 입력 토큰 비용이 크게 줄어든다
@@ -103,7 +106,7 @@ def build_kfgi_prompt(
         lines.append(
             f"두 성격으로 나눈 값: 추세지수 {trend_score:.0f}점(Momentum·Strength·Breadth — 높으면 상승추세), "
             f"투심지수 {sentiment_score:.0f}점(Volatility·Put/Call — 이 2개는 역행 지표라 점수가 높다는 건 "
-            f"평활 변동성·풋콜 거래량비가 자기 과거 대비 낮다는 뜻이며, 낮은 점수는 그 반대). "
+            f"변동성·풋수요가 낮다 = 시장이 안심/방심하고 있다는 뜻이고, 낮으면 공포·헤지 수요가 크다는 뜻). "
             f"Credit Spread(회사채 BBB−AA)는 매크로 신용 배경으로만 참고하고 이 두 지수에는 넣지 않음."
         )
         lines.append(
@@ -160,18 +163,18 @@ def build_options_prompt(
     lines = [
         f"[{title}] 현재가(Spot): {spot:,.1f}",
         f"(주의) {SIGN_CONVENTION_CAVEAT}",
-        f"Call Wall(감마 가중 콜 OI 집중 행사가; 헤지 방향 식별 불가): {_fmt(levels.call_wall, 'call_wall')}",
-        f"Put Wall(감마 가중 풋 OI 집중 행사가; 헤지 방향 식별 불가): {_fmt(levels.put_wall, 'put_wall')}",
-        f"Zero Gamma(합산 감마 부호가 바뀌는 경계선 — 전역 부호 반전만 위치 불변; 계약별 부호 변경에는 위치도 의존): {zg_txt}",
-        f"MaxPain(부분 체인·비표준 내재가치 최소점; 수렴 예측 아님): {_fmt(levels.max_pain, 'max_pain')}",
+        f"Call Wall(콜 옵션 미결제약정/감마가 가장 집중된 행사가 — 부호 가정이 맞다면 이 위에서 딜러 매수 헤지가 상승을 가속, 반대면 완충): {_fmt(levels.call_wall, 'call_wall')}",
+        f"Put Wall(풋 옵션 미결제약정/감마가 가장 집중된 행사가 — 부호 가정이 맞다면 이 아래에서 딜러 매도 헤지가 하락을 가속, 반대면 완충): {_fmt(levels.put_wall, 'put_wall')}",
+        f"Zero Gamma(합산 감마 부호가 바뀌는 경계선 — 위치는 부호 가정에 불변, 위/아래 국면 해석만 가정에 의존): {zg_txt}",
+        f"MaxPain(만기일 옵션 내재가치 총합이 최소가 되는 행사가 — 수렴 경향의 통계적 근거는 약함): {_fmt(levels.max_pain, 'max_pain')}",
         f"Net DEX(딜러 델타 명목가치 — 부호는 미국식 가정 기준): {_won(net_dex)}",
         f"Net Vanna Flow(변동성 1%p 상승 시 델타 명목가치 변화 — 부호는 가정 기준): {_won(net_vex)}",
         f"Net Charm Flow(하루 경과 시 델타 명목가치 변화 — 부호는 가정 기준): {_won(net_charm)}",
     ]
     if levels.call_wall_above is not None:
-        lines.append(f"상단 Gamma Wall(스팟 위 콜 감마 집중): {_fmt(levels.call_wall_above)}")
+        lines.append(f"상단 Gamma Wall(스팟 위 콜 감마 최대 저항): {_fmt(levels.call_wall_above)}")
     if levels.put_wall_below is not None:
-        lines.append(f"하단 Gamma Wall(스팟 아래 풋 감마 집중): {_fmt(levels.put_wall_below)}")
+        lines.append(f"하단 Gamma Wall(스팟 아래 풋 감마 최대 지지): {_fmt(levels.put_wall_below)}")
     if risk_reversal is not None and risk_reversal[2] is not None:
         call_iv, put_iv, rr = risk_reversal
         skew = "풋 프리미엄이 더 비쌈(하방 공포 우위)" if rr < 0 else "콜 프리미엄이 더 비쌈(상방 기대 우위)"
@@ -180,13 +183,13 @@ def build_options_prompt(
         oi_sk = positioning_skew["oi_skew"] * 100
         pcr = positioning_skew.get("oi_pcr")
         pcr_str = f", 풋/콜 미결제약정비율 {pcr:.2f}" if pcr is not None else ""
-        tilt = "콜 OI 수량 우위(방향 식별 불가)" if oi_sk >= 0 else "풋 OI 수량 우위(방향 식별 불가)"
+        tilt = "콜 포지션 우위(상방 쏠림)" if oi_sk >= 0 else "풋 포지션 우위(하방 쏠림)"
         lines.append(
             f"콜/풋 포지션 쏠림도(미결제약정 기준, 변동성 스큐와 다른 축): {oi_sk:+.1f}% — {tilt}{pcr_str}. "
             "RR(스큐)과 쏠림도가 반대로 나올 수 있으며 그건 모순이 아니라 서로 다른 것을 재는 것임."
         )
     if scenarios:
-        lines.append("관찰 레벨(PoT는 만기까지의 개별 터치확률이며 시나리오 확률이 아닙니다):")
+        lines.append("시나리오(PoT가 이미 각 레벨에 명시돼 있으니 그 확률을 그대로 인용하세요):")
         for sc in scenarios:
             inval = f", 무효화 레벨(이 시나리오가 깨졌을 때의 다음 구조적 레벨— 개인 손절가 아님): {sc['invalidation']}" if sc.get("invalidation") else ""
             lines.append(f"- {sc['name']}: {sc['trigger']} → {sc['target']}{inval} ({sc['note']})")
@@ -197,7 +200,7 @@ def build_options_prompt(
     lines.append(
         "위 옵션 시장 지표들이 지금 무엇을 보여주는지, 현재가가 어떤 레벨들 사이에 끼어있고 "
         "각 레벨의 PoT(위험중립 터치확률)가 몇 %인지를 초보자에게 6~9문장으로 구체적이고 직관적으로 "
-        "설명해주세요. Wall로 딜러 헤지 방향을 추론하지 말고, PoT는 "
+        "설명해주세요. 딜러 헤지 방향은 '부호 가정이 맞다면'의 조건부로만 언급하고, PoT는 "
         "옵션 가격에 내재된 값이지 실제 도달 확률 단정이 아님을 분명히 하세요."
     )
     return "\n".join(lines)

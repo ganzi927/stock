@@ -70,8 +70,7 @@ def section_facts(
         _lvl("Call Wall", levels.call_wall, "call_wall"),
         _lvl("상단 Gamma Wall", levels.call_wall_above),
         _lvl("Zero Gamma", levels.zero_gamma, "zero_gamma"),
-        _lvl("MaxPain (부분 체인·비표준)", levels.max_pain, "max_pain"),
-        _lvl("MaxPain (전 행사가·계약)", levels.max_pain_full),
+        _lvl("MaxPain", levels.max_pain, "max_pain"),
         _lvl("DEX Neutral", levels.dex_neutral_maxpain),
         _lvl("Put Wall", levels.put_wall, "put_wall"),
         _lvl("하단 Gamma Wall", levels.put_wall_below),
@@ -107,8 +106,8 @@ def _fmt_fgi(fgi: dict) -> str:
     lines = [
         f"공포탐욕: 추세지수 {trend:.0f} / 투심지수 {sentiment:.0f}  "
         f"(참고용 CNN식 TOTAL {total:.0f}, 6개 등가중 — 순행·역행 상쇄값이라 단독 판단 금지)",
-        "  (추세=Momentum + (Strength·Breadth) 순행 / 투심=Volatility·Put-Call 역행: 투심 낮음=평활 변동성·풋콜 거래량비 높음(공포 측), "
-        "높음=평활 변동성·풋콜 거래량비 낮음(탐욕 측). 이 방향성의 예측력은 백테스트 미입증 — VALIDATION.md. Credit Spread는 매크로 배경으로 합성 미포함)",
+        "  (추세=Momentum + (Strength·Breadth) 순행 / 투심=Volatility·Put-Call 역행: 투심 낮음=변동성·풋수요 낮음(안심), "
+        "높음=헤지수요 큼(공포). 이 방향성의 예측력은 백테스트 미입증 — VALIDATION.md. Credit Spread는 매크로 배경으로 합성 미포함)",
         detail,
     ]
     return "\n".join(lines)
@@ -140,15 +139,19 @@ def build_outlook_prompt(as_of: date, fgi: dict, opt_facts: list[dict]) -> str:
         parts.append(_fmt_opt(f))
         parts.append("")
     parts.append(
-        "현재 상태와 상단·하단 관찰 레벨을 설명하라. OI는 롱/숏 소유자를 식별하지 못한다. "
-        "Wall 위치만으로 헤지 방향·지지·저항·돌파 후 가속을 추론하지 말라. "
-        "Zero Gamma의 전역 부호 반전 불변성은 계약별 부호 변경에는 성립하지 않는다. "
-        "MaxPain은 최소 내재가치 계산이지 수렴 예측이 아니다. "
-        "PoT는 해당 옵션 만기까지 상수 IV GBM 모형의 위험중립 터치확률이다. "
-        "익일 확률이나 서로 배타적인 시나리오 확률로 바꾸거나 합산하지 말라. "
-        "숫자는 제공된 값을 그대로 사용하고 투자 조언·미래 방향 예측은 하지 말라. "
-        "한국어 존댓말 12~18문장, 이모지·마크다운 금지."
-
+        "위를 종합해 다음을 작성하라. 투자 조언·방향 예측 확언 금지. 시나리오는 "
+        "'레벨 이탈 시 딜러 헤지 구조상 어느 방향으로 가속되는가'라는 구조 설명이다. "
+        "단 딜러 헤지 방향은 미국식 부호 가정(딜러 콜 롱·풋 숏)을 전제한 것이며 한국시장에선 "
+        "반대일 수 있으므로 '이 가정이 맞다면'의 조건부로만 쓰라. 레벨의 위치 자체는 부호 "
+        "가정과 무관하게 유효하다. PoT 는 '위험중립(옵션 가격에 내재된) 확률'로 성격을 밝혀 "
+        "인용하고 실제 도달 확률로 단정하지 말라.\n"
+        "1. 한 문단: 오늘 시장 상태 종합 — 추세지수와 투심지수가 말하는 것, 지수옵션과 "
+        "개별주식(삼성·하이닉스) 구조가 일치하는지 엇갈리는지.\n"
+        "2. 내일(익일) 관찰 시나리오 3개 — 기본(현 구조 유지 시) / 상방 / 하방. 각각 "
+        "'어느 레벨을 넘거나 이탈하면' + '(부호 가정이 맞다면) 딜러 헤지가 어느 방향으로 작동해' + "
+        "'다음 레벨은 어디' 형식으로. 레벨 숫자를 반드시 포함.\n"
+        "3. 한 줄: 내일 가장 먼저 확인할 레벨 하나와 그 이유.\n"
+        "소제목 없이 자연스러운 문단으로. 한국어 존댓말, 12~18문장, 이모지·마크다운 금지."
     )
     return "\n".join(parts)
 
@@ -166,9 +169,13 @@ def build_outlook_section(as_of: date, fgi: dict | None, opt_facts: list[dict]) 
     # 게시 전 검증: 산문 속 레벨 숫자가 실제 계산으로 넘긴 값과 일치하는지 대조한다.
     # LLM이 지어냈거나 잘못 옮겨 적은 레벨(예: 1,046 → 1,064)을 잡는다.
     unverified = _unverified_numbers(text, prompt)
-    if unverified:
-        return None  # 확인된 숫자 오류가 있는 해설은 게시하지 않는다.
     warn_html = ""
+    if unverified:
+        nums = ", ".join(f"{v:,.1f}" for v in unverified)
+        warn_html = (
+            f'<div class="warn-banner">⚠ 아래 서술의 다음 숫자는 계산 결과에 없습니다(전사 오류·추정 가능): '
+            f"{nums}. 해당 값은 무시하고 각 탭의 레벨 표를 신뢰하세요.</div>"
+        )
 
     body = _html.escape(text).replace("\n\n", "</p><p>").replace("\n", "<br/>")
     return f"""

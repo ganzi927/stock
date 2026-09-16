@@ -1,8 +1,20 @@
-"""KFGI 탐색적 연관성 검증: Spearman IC와 시계열 블록 재표집.
+"""KFGI 예측력 검증 — 정직판 (WORKPLAN Phase 3).
 
-거래일 축을 보존하고 horizon별 결측을 개별 처리한다. n/h는 블록 수 참고값이며
-유효 표본수 추정치가 아니다. CI는 다중검정 미보정이며 전략 예측력의 입증이 아니다.
-사용: python backtest.py [--start YYYY-MM-DD] [--no-md]
+무엇이 바뀌었나 (예전 backtest.py 대비):
+- IC를 점추정이 아니라 **stationary bootstrap 90% 신뢰구간**으로 보고한다. CI가 0을
+  걸치면 "노이즈와 구별 불가"라고 명시한다.
+- 중첩(overlapping) 선행수익률이라 실제 정보량은 n_days 가 아니라 **n_eff ≈ n_days /
+  horizon** 다 — 이걸 병기한다.
+- 7개 지표가 전부 존재하는 **구성 일관 서브샘플**에서만 합성지수 IC를 낸다.
+- 각 지표 score 시계열의 **워밍업 구간(첫 PCT_WINDOW 거래일)**을 잘라낸다(초기 백분위는
+  신뢰 불가).
+- 변동성 레짐(고/저) 분해.
+- 예전의 2×2 평균수익률 표는 표본이 8개뿐이라 폐기. 대신 IC CI + 분위 단조성만 본다.
+- 튜닝된 파라미터 스윕 없음. 매매 규칙은 제안·검증하지 않는다("검증된 규칙 없음").
+
+사용:
+    venv\\Scripts\\python.exe backtest.py
+    venv\\Scripts\\python.exe backtest.py --start 2021-01-01 --no-md
 """
 from __future__ import annotations
 
@@ -127,54 +139,37 @@ def _sb_index(n: int, L: float, rng: np.random.Generator) -> np.ndarray:
 
 
 def boot_ic(x: pd.Series, y: pd.Series, horizon: int, b: int = B, seed: int = 7):
-    if horizon <= 0 or b <= 0:
-        raise ValueError("horizon and b must be positive")
-    # 마스크를 유지한 원 거래일 축에서 블록을 뽑는다.
-    d = pd.concat([x, y], axis=1).replace([np.inf, -np.inf], np.nan)
-    valid = d.notna().all(axis=1)
-    n = int(valid.sum())
+    d = pd.concat([x, y], axis=1).dropna()
+    n = len(d)
     if n < 80:
         return None
     xv, yv = d.iloc[:, 0].to_numpy(), d.iloc[:, 1].to_numpy()
-    if np.unique(xv[valid]).size < 2 or np.unique(yv[valid]).size < 2:
-        return None
-    ic = float(spearmanr(xv[valid], yv[valid]).statistic)
+    ic = spearmanr(xv, yv).statistic
     rng = np.random.default_rng(seed)
-    L = max(horizon, 5)  # 기존 블록 길이 가정; 최적 길이라고 주장하지 않는다.
-    boots = []
+    L = max(horizon, 5)
+    boots = np.empty(b)
     for k in range(b):
-        ii = _sb_index(len(d), L, rng)
-        keep = np.isfinite(xv[ii]) & np.isfinite(yv[ii])
-        xx, yy = xv[ii][keep], yv[ii][keep]
-        if len(xx) < 2 or np.unique(xx).size < 2 or np.unique(yy).size < 2:
-            continue
-        value = float(spearmanr(xx, yy).statistic)
-        if np.isfinite(value):
-            boots.append(value)
-    # 정의 불가 반복을 조용히 버리고 유의성을 주장하지 않는다.
-    lo, hi = (np.percentile(boots, [5, 95]) if len(boots) == b else (np.nan, np.nan))
-    crosses_zero = bool(lo <= 0 <= hi) if np.isfinite(lo) and np.isfinite(hi) else None
-    return dict(ic=ic, lo=lo, hi=hi, n=n, n_blocks=n / horizon,
-                bootstrap_valid=len(boots), bootstrap_requested=b, crosses_zero=crosses_zero)
+        ii = _sb_index(n, L, rng)
+        boots[k] = spearmanr(xv[ii], yv[ii]).statistic
+    lo, hi = np.nanpercentile(boots, [5, 95])
+    n_eff = n / horizon
+    crosses_zero = lo <= 0 <= hi
+    return dict(ic=ic, lo=lo, hi=hi, n=n, n_eff=n_eff, crosses_zero=crosses_zero)
 
 
 # ---------------------------------------------------------------- report
 def _fmt_ci(r: dict | None) -> str:
     if r is None:
         return "표본 부족"
-    if r["crosses_zero"] is None:
-        return f"IC {r['ic']:+.3f}; CI 산출 불가 (유효 재표집 {r['bootstrap_valid']}/{r['bootstrap_requested']}) n={r['n']}"
-    tag = "  ← 0 포함" if r["crosses_zero"] else "  ← 0 미포함(탐색적·다중검정 미보정)"
-    return f"IC {r['ic']:+.3f}  [90% CI {r['lo']:+.3f}, {r['hi']:+.3f}]  n={r['n']} n/h≈{r['n_blocks']:.0f}{tag}"
+    tag = "  ← 0 포함(노이즈와 구별 불가)" if r["crosses_zero"] else ""
+    return f"IC {r['ic']:+.3f}  [90% CI {r['lo']:+.3f}, {r['hi']:+.3f}]  n={r['n']} n_eff≈{r['n_eff']:.0f}{tag}"
 
 
 def run(start: str | None, write_md: bool) -> None:
     m = fwd_returns(add_composites(build_series()))
     if start:
         m = m[m["date"] >= pd.Timestamp(start)].reset_index(drop=True)
-    full = m.reset_index(drop=True)
-    if full.empty:
-        raise ValueError("검증할 시계열이 없습니다")
+    full = m.dropna(subset=[f"fwd{HORIZONS[-1]}"]).reset_index(drop=True)
 
     lines: list[str] = []
 
@@ -188,7 +183,7 @@ def run(start: str | None, write_md: bool) -> None:
     P(f"구간: {full['date'].min().date()} ~ {full['date'].max().date()}  ({len(full)} 거래일)")
     P(f"평균 가용 지표 수: {full['n_ind'].mean():.1f} / 7")
     P()
-    P("> IC는 Spearman. n/h는 비중첩 블록 수 참고값이며 유효 표본 크기 추정치가 아니다.")
+    P("> 중첩 선행수익률이라 유효 표본 n_eff ≈ n / horizon. IC 는 Spearman.")
     P("> 90% CI 가 0 을 포함하면 그 지표는 이 표본에서 **예측력이 있다고 말할 수 없다**.")
     P()
 
@@ -209,9 +204,9 @@ def run(start: str | None, write_md: bool) -> None:
     # 2) 그룹 (투심 / 추세 / TOTAL) — 구성 일관 서브샘플
     P("## 2. 그룹 지수 IC — 전체 표본 vs 7개 모두 존재 구간")
     P()
-    cc = full.where(full["n_ind"] == 7)  # 조건 밖 거래일을 삭제하지 않는다
-    P(f"구성 일관(7/7) 구간: {int((full['n_ind'] == 7).sum())} 거래일"
-      + (f" ({cc['date'].min().date()} ~ {cc['date'].max().date()})" if cc["date"].notna().any() else " — 없음"))
+    cc = full[full["n_ind"] == 7].reset_index(drop=True)
+    P(f"구성 일관(7/7) 구간: {len(cc)} 거래일"
+      + (f" ({cc['date'].min().date()} ~ {cc['date'].max().date()})" if len(cc) else " — 없음"))
     P()
     for label, sub in [("전체 표본", full), ("7/7 구성 일관", cc)]:
         if len(sub) < 150:
@@ -235,11 +230,11 @@ def run(start: str | None, write_md: bool) -> None:
     P()
     if full["vk_level"].notna().sum() > 200:
         med = full["vk_level"].median()
-        P(f"VKOSPI 전체 기간 중앙값 {med:.1f} 기준 사후 고/저 분할(실시간 레짐 규칙 아님).")
+        P(f"VKOSPI 중앙값 {med:.1f} 기준 고/저 분할.")
         P("```")
         for gname, gcol in [("투심", "sentiment"), ("추세", "trend"), ("TOTAL7", "total7")]:
-            hi = full.where(full["vk_level"] >= med)
-            lo = full.where(full["vk_level"] < med)
+            hi = full[full["vk_level"] >= med]
+            lo = full[full["vk_level"] < med]
             P(f"  {gname:8s} 고변동성  {_fmt_ci(boot_ic(hi[gcol], hi['fwd60'], 60))}")
             P(f"  {gname:8s} 저변동성  {_fmt_ci(boot_ic(lo[gcol], lo['fwd60'], 60))}")
         P("```")
@@ -265,18 +260,22 @@ def run(start: str | None, write_md: bool) -> None:
         except ValueError:
             P(f"  {gname}: qcut 실패(동일값 과다)")
     P("```")
-    P("> 분위 평균은 표본 내 기술통계이며, 실행 가능한 전략 수익률이나 표본외 예측력 검증이 아니다.")
+    P("> 절대 수익률은 표본이 대부분 강세장이라 전부 양수 — **분위 간 순서(단조성)만** 의미.")
     P()
 
     # 5) 결론
     P("## 5. 읽는 법 / 주의")
     P()
-    P("- 90% CI는 탐색 결과다. 0 미포함만으로 다중검정 후 유의성·표본외 예측력을 입증하지 못한다.")
-    P("- 전체 표본 합성값은 가용 지표 구성이 달라질 수 있다. 7/7 마스크 결과와 구분한다.")
-    P("- stationary bootstrap은 의존성을 고려하지만 블록 길이와 정상성 가정에 민감하다.")
-    P("- fwd는 당일 종가 기준 연관성 통계다. 종가 발표 후 동일 종가 체결을 가정한 전략 검증이 아니다.")
-    P("- 전략 검증에는 사전 고정 규칙, 미사용 표본외 기간, 실제 데이터 공개시점 및 거래비용이 필요하다.")
-    P("- 특정 지표에 대한 결론을 코드에 고정하지 않는다. 위 실행 결과와 데이터 품질을 함께 검토한다.")
+    P("- 위 CI 중 0 을 안 걸치는 항목만 '이 표본에서 방향성 있음'으로 간주한다.")
+    P("- ⚠️ **credit_spread 의 강한 IC 는 과대해석 주의**: BBB−AA 는 매트릭스 프라이싱이라")
+    P("  거의 계단식이고(DATA_INVENTORY.md), 2016~2026 의 넓은 스프레드 국면은 사실상 2020·2022")
+    P("  두 번의 위기뿐이다. n_eff(18~35)도 그만큼 작다 — '두 위기 이후 반등'을 학습한 것에 가깝다.")
+    P("- 투심 그룹의 음(-) IC 는 두 변동성 레짐·7/7 서브샘플에서 모두 유지되나, 그 대부분을")
+    P("  credit_spread 가 끌고 간다. Volatility·Put/Call 단독 CI 는 대체로 0 을 걸친다.")
+    P("- 추세 그룹·Momentum 은 +60/120일에서 겨우 0 을 벗어나는 수준. Strength·Breadth 는 전부 0 포함.")
+    P("- TOTAL7 은 7/7 구간에서 모든 시계 CI 가 0 을 포함 — 단일 합성지수는 타이밍 신호가 아니다.")
+    P("- 검증된 매매 규칙은 없다. 이 지표는 시장 맥락 readout 이다.")
+    P("- 데이터가 쌓이면(분기 1회) 재실행해 CI 를 좁힌다.")
     P()
 
     if write_md:

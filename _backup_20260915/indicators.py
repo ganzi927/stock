@@ -55,9 +55,6 @@ def _rolling_percentile_score(series: pd.Series, invert: bool = False, window: i
     창이 `_min_periods(window)` 만큼 차기 전 구간은 NaN (신뢰할 수 없는 초기값 배제)."""
 
     def pct_rank(w: np.ndarray) -> float:
-        if not np.isfinite(w[-1]):
-            return np.nan
-        w = w[np.isfinite(w)]
         n = len(w)
         if n <= 1:
             return 50.0
@@ -67,7 +64,7 @@ def _rolling_percentile_score(series: pd.Series, invert: bool = False, window: i
         equal_excl_self = np.sum(w == last) - 1
         return (below + 0.5 * equal_excl_self) / (n - 1) * 100
 
-    score = series.replace([np.inf, -np.inf], np.nan).rolling(window, min_periods=_min_periods(window)).apply(pct_rank, raw=True)
+    score = series.rolling(window, min_periods=_min_periods(window)).apply(pct_rank, raw=True)
     if invert:
         score = 100 - score
     return score
@@ -235,8 +232,11 @@ def latest_result(df: pd.DataFrame | None, name: str, is_proxy: bool, note: str)
             since = str(pd.Timestamp(scored["date"].iloc[0]).date())
         except Exception:
             since = None
-    # 평활·자기상관을 무시한 이항 표준오차는 검증된 점수 CI가 아니다.
-    ci = None
+    # WORKPLAN2 C4: 백분위 점수의 표본오차(유한 창 n에서 옴). p=score/100 에 대해
+    # SE≈sqrt(p(1-p)/n), 95% 반폭 = 1.96·SE·100 (점 단위).
+    p = float(last["score"]) / 100.0
+    n_eff = min(n_scored, PCT_WINDOW)
+    ci = 1.96 * float(np.sqrt(max(p * (1 - p), 1e-6) / max(n_eff, 1))) * 100
     return IndicatorResult(
         name, float(last["raw"]), float(last["score"]), is_proxy, note,
         low_confidence=n_scored < PCT_WINDOW, scored_since=since, score_ci=ci,

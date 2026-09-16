@@ -40,11 +40,9 @@ def _update_iv_rank_cache(cache_path: Path, as_of: date, atm_iv: float) -> float
     new_row = pd.DataFrame([{"date": today_ts, "atm_iv": atm_iv}])
     df = pd.concat([d for d in (df, new_row) if not d.empty], ignore_index=True)
     df = df.sort_values("date").reset_index(drop=True)
-    cache_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(cache_path, index=False)
 
-    historical = df.loc[df["date"] <= today_ts, "atm_iv"]
-    score = _rolling_percentile_score(historical)
+    score = _rolling_percentile_score(df["atm_iv"])
     return float(score.iloc[-1]) if pd.notna(score.iloc[-1]) else None
 
 
@@ -289,8 +287,13 @@ def generate_options_sections(
     r_market = fetch_risk_free_rate(bas_dd)
     futures = fetch_kospi200_futures(bas_dd)
 
-    # 당일 순매매(flow)는 미결제 순포지션(stock)이 아니다. 이를 총 OI의 부호로
-    # 사용하지 않는다. 타 리포트 수치와의 근접도도 실제 포지션의 검증 근거가 아니다.
+    # KB증권 행사가별 '금융투자' 부호 반영 기능(investor_flow.build_strike_sign_overrides)은
+    # 만들어봤지만 기본적으로 꺼둔다: 실제로 켜보니 정규월물 Zero Gamma가 fmkorea 원본
+    # (1,046.4)과 0.3%(1,049.9)까지 근접했던 순수 업계 표준 가정 방식보다, 켠 뒤(457.4,
+    # 56% 차이)가 오히려 훨씬 나빠지는 걸 확인했다 — 금융투자가 폭넓게 콜·풋 순매수
+    # 상태라 Net GEX가 넓은 구간에서 양수로 쏠리면서 Zero Gamma가 스팟에서 멀리
+    # 튀었기 때문. README "행사가별 실제 부호 반영" 절 참고. 필요하면 아래 None 대신
+    # investor_flow.build_strike_sign_overrides(BASE_DIR / "uploads") 결과를 다시 넣으면 된다.
     investor_flow_note = _build_investor_flow_note()
 
     sections, facts = [], []

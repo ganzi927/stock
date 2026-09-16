@@ -53,18 +53,12 @@
 | spec | 상태 | 마지막 정합 확인 | 알려진 코드 vs 문서 드리프트 |
 |---|---|---|---|
 | 00-architecture | STABLE | 2026-09-08 | 없음 |
-| 10-kfgi | STABLE | 2026-09-16 | `RECONCILIATION.md §5`는 Volatility 50일MA·Breadth Summation·창 504일로 적혀 있으나 **현행 코드는 20일MA·McClellan Oscillator·창 252일**(의도적 이탈, `indicators.py` 주석). spec은 코드 기준으로 기술. |
-| 20-kospi200-options | STABLE | 2026-09-16 | 감사 정정 반영; 모델/데이터 한계는 METHODOLOGY_AUDIT.md |
-| 30-stock-options | STABLE | 2026-09-16 | 위클리 개별주식옵션 미통합(명시적 제외) |
-| 40-outlook-ai | STABLE | 2026-09-16 | 숫자 게이트 범위는 제한적; 완전 사실 검증 아님 |
+| 10-kfgi | STABLE | 2026-09-08 | `RECONCILIATION.md §5`는 Volatility 50일MA·Breadth Summation·창 504일로 적혀 있으나 **현행 코드는 20일MA·McClellan Oscillator·창 252일**(의도적 이탈, `indicators.py` 주석). spec은 코드 기준으로 기술. |
+| 20-kospi200-options | STABLE | 2026-09-08 | 없음 |
+| 30-stock-options | STABLE | 2026-09-08 | 위클리 개별주식옵션 미통합(명시적 제외) |
+| 40-outlook-ai | STABLE | 2026-09-08 | 없음 |
 | 50-data-pipeline | STABLE | 2026-09-08 | KOSDAQ(`ksq_bydd_trd`) 미이용신청 → KOSPI만 |
 | 60-automation | STABLE | 2026-09-10 | 없음 (아침 트리거 07:30→08:00, 수동 실행 `리포트생성.cmd` 추가 — REQ-AUTO-2) |
 | 99-glossary | STABLE | 2026-09-08 | — |
 
 상태값: `DRAFT`(초안, 미검토) → `STABLE`(코드와 정합 확인됨) → `TODO`(작성 예정).
-
-| 70-validation | STABLE | 2026-09-16 | 합성자료 테스트만 완료; 실데이터 재검증 필요 |
-
-[70-validation.md](70-validation.md): backtest.py의 탐색 통계 계약.
-
-2026-09 감사 회귀 테스트: `python -m unittest discover -s tests -p test_audit.py -v`.

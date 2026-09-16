@@ -20,11 +20,8 @@ CONTRACT_MULTIPLIER = 250_000  # KOSPI200 옵션 1계약당 25만원
 
 
 def _d1_d2(spot: np.ndarray, strike: np.ndarray, t: np.ndarray, sigma: np.ndarray, r: float, q: float):
-    values = (spot, strike, t, sigma)
-    if any(np.any(~np.isfinite(v)) or np.any(np.asarray(v) <= 0) for v in values):
-        raise ValueError("spot, strike, t and sigma must be finite and positive")
-    if not np.isfinite(r) or not np.isfinite(q):
-        raise ValueError("r and q must be finite")
+    sigma = np.clip(sigma, 1e-4, None)
+    t = np.clip(t, 1e-6, None)
     d1 = (np.log(spot / strike) + (r - q + 0.5 * sigma**2) * t) / (sigma * np.sqrt(t))
     d2 = d1 - sigma * np.sqrt(t)
     return d1, d2

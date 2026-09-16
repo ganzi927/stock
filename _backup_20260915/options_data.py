@@ -103,9 +103,8 @@ def fetch_option_chain(bas_dd: str, prod_nm: str) -> pd.DataFrame:
     # 시리즈를 잡던 버그가 있었다 (RECONCILIATION.md O2).
     as_of = date(int(bas_dd[:4]), int(bas_dd[4:6]), int(bas_dd[6:8]))
     future = df[df["expiry"] > as_of]
-    if future.empty:
-        return df.iloc[:0].copy()
-    df = future
+    if not future.empty:
+        df = future
     nearest_expiry = df["expiry"].min()
     df = df[df["expiry"] == nearest_expiry].reset_index(drop=True)
     return df

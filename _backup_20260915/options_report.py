@@ -144,7 +144,6 @@ def build_section_html(
     if levels.zero_gamma_lo is not None and levels.zero_gamma_hi is not None:
         zg_name = f"Zero Gamma (민감도 {levels.zero_gamma_lo:,.1f}~{levels.zero_gamma_hi:,.1f})"
     level_rows += _level_row(zg_name, levels.zero_gamma, spot, pot=pot.get("zero_gamma"))
-    level_rows += _level_row("MaxPain (전 행사가·계약)", levels.max_pain_full, spot)
     mp_name = "MaxPain (±30% windowed·비표준)"
     if levels.max_pain_20 is not None and levels.max_pain_40 is not None:
         mp_name += f" · ±20%:{levels.max_pain_20:,.0f} ±40%:{levels.max_pain_40:,.0f}"
@@ -211,7 +210,7 @@ def build_section_html(
 
     iv_gauge_html = ""
     if iv_rank is not None:
-        img = gauge_chart(iv_rank, "IV Percentile")
+        img = gauge_chart(iv_rank, "IV Rank")
         iv_gauge_html = f'<div style="text-align:center;max-width:280px;margin:20px auto 0"><img src="data:image/png;base64,{img}"/></div>'
 
     def _eok(v: float) -> str:
@@ -227,7 +226,7 @@ def build_section_html(
 
     flow_cards = f"""
     <div class="card-grid" style="margin-top:14px">
-      <div class="card"><div class="card-name">Net DEX</div><div class="card-score" style="color:{'#3D5C36' if net_dex>=0 else '#8A4A47'}">{_eok(net_dex)}</div><div class="card-note">딜러 순델타 명목가치(원, delta×OI×승수×스팟). <b>부호는 미국식 가정</b>(딜러 콜 롱·풋 숏) 기준 — KRX에선 반대일 수 있음</div></div>
+      <div class="card"><div class="card-name">Net DEX</div><div class="card-score" style="color:{'#3D5C36' if net_dex>=0 else '#8A4A47'}">{_eok(net_dex)}</div><div class="card-note">딜러 순델타 명목가치(원, delta×OI×승수×스팟). <b>부호는 미국식 가정</b>(딜러 콜·풋 순매도) 기준 — KRX에선 반대일 수 있음</div></div>
       <div class="card"><div class="card-name">Vanna Flow</div><div class="card-score" style="color:{'#3D5C36' if net_vex>=0 else '#8A4A47'}">{_eok(net_vex)}</div><div class="card-note">IV 1%p 상승 시 델타 명목가치 변화(원). 부호는 가정 기준</div></div>
       <div class="card"><div class="card-name">Charm Flow</div><div class="card-score" style="color:{'#3D5C36' if net_charm>=0 else '#8A4A47'}">{_eok(net_charm)}</div><div class="card-note">하루 경과 시 델타 명목가치 변화(원) — 시간가치 소멸. 부호는 가정 기준</div></div>
     </div>"""
@@ -253,7 +252,7 @@ def build_section_html(
             sk_color = "#3D5C36" if oi_sk >= 0 else "#8A4A47"
             vol_line = f" · 거래량 {vol_sk:+.1f}%" if vol_sk is not None else ""
             skew_card = f"""
-      <div class="card"><div class="card-name">콜/풋 포지션 쏠림도</div><div class="card-score" style="color:{sk_color}">{oi_sk:+.1f}%</div><div class="card-note">미결제약정 (콜−풋)/(콜+풋){vol_line}. 양수면 콜 OI 수량 우위이며 매수·매도 주체나 방향성은 식별할 수 없음. RR(변동성 스큐)과 다른 축이라 둘이 반대로 나올 수 있음</div></div>"""
+      <div class="card"><div class="card-name">콜/풋 포지션 쏠림도</div><div class="card-score" style="color:{sk_color}">{oi_sk:+.1f}%</div><div class="card-note">미결제약정 (콜−풋)/(콜+풋){vol_line}. 양수면 콜 포지션 우위 — fmkorea "콜 쏠림/상방 쏠림도"와 같은 개념. RR(변동성 스큐)과 다른 축이라 둘이 반대로 나올 수 있음</div></div>"""
         rr_html = f"""
     <div class="card-grid" style="margin-top:14px">
       <div class="card"><div class="card-name">25델타 Risk Reversal</div><div class="card-score" style="color:{rr_color}">{rr:+.2f}%p</div><div class="card-note">25델타 콜 IV({call_iv:.1f}%) − 25델타 풋 IV({put_iv:.1f}%) — 음수면 풋 프리미엄이 더 비쌈(하방 공포 우위), 업계 표준 지표</div></div>{skew_card}
@@ -266,12 +265,12 @@ def build_section_html(
         max_idx = deviations.abs().idxmax()
         worst_strike = synth_df.loc[max_idx, "strike"]
         worst_dev = deviations.loc[max_idx]
-        direction = "높게" if worst_dev > 0 else "낮게"
+        direction = "고평가" if worst_dev > 0 else "저평가"
         synth_html = f"""
       <h2>풋-콜 패리티 합성지수</h2>
       <div class="hero"><img src="data:image/png;base64,{synth_img}"/></div>
-      <div class="scenario-row" style="margin-bottom:20px">행사가 {worst_strike:,.1f} 부근 옵션 가격이 내재하는 지수는 실제 스팟 대비 {worst_dev:+.1f}% {direction} 계산됩니다
-      (풋-콜 패리티 기준 — C−P+K·e^(−rT)를 스팟으로 환산. 비동시 종가·스프레드·r/q 가정의 영향이 있어 차익거래나 고평가/저평가의 증거는 아닙니다).</div>"""
+      <div class="scenario-row" style="margin-bottom:20px">행사가 {worst_strike:,.1f} 부근 옵션 가격이 내재하는 지수는 실제 스팟 대비 {worst_dev:+.1f}% {direction}되어 있습니다
+      (풋-콜 패리티 기준 — C−P+K·e^(−rT)를 스팟으로 환산. 유동성 낮은 행사가는 호가 왜곡이 클 수 있어 참고용입니다).</div>"""
 
     return f"""
     <div class="section-block">
@@ -290,7 +289,7 @@ def build_section_html(
         <tr><th>레벨</th><th>가격</th><th>스팟 대비</th><th>PoT(만기 전 터치, 위험중립확률)</th></tr>
         {level_rows}
       </table>
-      <div class="card-note" style="margin-top:6px">PoT는 해당 만기까지 상수 IV GBM 모형의 <b>위험중립 터치확률</b>입니다. 실제 확률·익일 확률·서로 배타적인 시나리오 확률이 아닙니다. ATM IV 하나를 사용하므로 스큐·점프·변동성 변화를 반영하지 않습니다.</div>
+      <div class="card-note" style="margin-top:6px">PoT는 옵션 가격에 내재된 <b>위험중립</b> 확률로, 실제 도달 확률과는 리스크 프리미엄만큼 다릅니다. 각 레벨의 PoT는 ATM IV 하나로 계산돼 스큐를 반영하지 않습니다.</div>
       {commentary_html}
 
       <h2>딜러 플로우</h2>

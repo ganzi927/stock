@@ -1,3 +1,5 @@
+> **2026-09-16 감사 상태:** 아래 수치는 수정 전 코드의 과거 실행 기록입니다. 새 코드로 재계산한 검증 결과가 아닙니다. 날짜 압축·고정 결론 등 정정 사항은 METHODOLOGY_AUDIT.md 및 spec/70-validation.md를 참고하세요. 실데이터 캐시/API 설정 후 재실행이 필요합니다.
+
 # KFGI 예측력 검증 (VALIDATION)
 
 생성: `python backtest.py`  ·  부트스트랩 B=1500 (stationary bootstrap)

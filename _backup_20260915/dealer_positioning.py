@@ -1,8 +1,21 @@
-"""옵션 OI와 Black-Scholes 그릭스에 가정 부호를 적용하는 포지셔닝 모형.
+"""KOSPI200 옵션 딜러 포지셔닝 분석 (MaxPain / Zero Gamma / Call Wall·Put Wall / DEX·VEX·Charm Flow).
 
-기본 콜 롱·풋 숏은 관측된 딜러 인벤토리가 아니다. 순매매(flow)로 기존 포지션(stock)을
-확정할 수 없다. 전역 부호 반전의 영점 불변성을 임의 인벤토리 변화에 일반화하지 않는다.
-Wall과 MaxPain은 명시된 목적함수의 통계값이며 지지·저항·만기 수렴을 보장하지 않는다.
+부호 규약(가정, WORKPLAN Phase 4-1 / WORKPLAN2 B6 — **KRX에서 검증 불가, 반대일 수 있음**):
+- GEX/DEX/VEX/Charm 전부 **하나의** 인벤토리 모델: 딜러 콜 롱·풋 숏 (+1 콜 / -1 풋),
+  SqueezeMetrics/SpotGamma 및 FlashAlpha 표준 $DEX 규약. Net GEX = Σ(콜 OI×Γ) − Σ(풋 OI×Γ),
+  Net DEX = Σ(콜 OI×δ) − Σ(풋 OI×δ). (예전엔 DEX만 "콜·풋 모두 숏" 리테일 휴리스틱이라
+  같은 콜에 대해 GEX와 반대 인벤토리를 가정 — 내부 불일치라 폐기.)
+- 그릭스는 각 종목 실제 IV(스마일 보간)로 계산. 기본은 sticky-strike(스팟이 바뀌어도 행사가별
+  IV 고정)이며, sticky-moneyness 가정과의 차이는 analyze()의 Zero Gamma 민감도 밴드가 잡는다.
+
+⚠️ 이 부호 규약은 미국시장 기준이다. KB증권 투자자별 순매수(금융투자 = 딜러 근사)에서는
+   **콜·풋 모두 순매수(롱)**로 나와 위 가정과 반대였다. 딜러 실제 포지션은 미국시장에서도
+   비공개라 검증 불가능한 모델링 관행이다(SpotGamma DDOI). 따라서:
+   - Zero Gamma / Call Wall / Put Wall의 **위치**는 전역 부호 반전에 불변이라 "OI(감마)가
+     집중된 레벨"로는 읽을 수 있다.
+   - 그러나 "Zero Gamma 위 = 안정/아래 = 가속" 같은 **국면 해석**과 Net GEX/DEX/Vanna/Charm
+     헤드라인 값의 **부호·크기**는 규약이 뒤집히면 통째로 반대가 된다. 리포트는 이걸
+     방향성 단정 없이 레벨·수치로만 제시한다 (SIGN_CONVENTION_CAVEAT).
 """
 
 from __future__ import annotations
@@ -16,16 +29,16 @@ import pandas as pd
 from greeks import CONTRACT_MULTIPLIER, DIVIDEND_YIELD, RISK_FREE_RATE, compute_greeks
 
 SIGN_CONVENTION_CAVEAT = (
-    "가정 모형: 딜러 콜 롱·풋 숏. 총 OI와 당일 순매매만으로 실제 딜러 순포지션을 "
-    "식별할 수 없다. 전역 부호 반전은 영점 위치를 보존하지만, 계약별 부호 변경은 "
-    "Zero Gamma 위치도 바꾼다. Wall은 감마 가중 OI 집중도이며 지지·저항 보장이 아니다."
+    "부호 규약: 미국식(딜러 콜 롱·풋 숏)을 GEX·DEX·VEX·Charm에 일관 적용. KRX에서 검증 "
+    "불가하며 KB증권 데이터(금융투자 콜·풋 순매수)는 반대를 시사한다. 레벨의 위치는 부호 "
+    "반전에 불변이나, 국면 해석과 Net 익스포저 부호는 규약에 의존한다."
 )
 
 
 def _interp_extrap(x_new: np.ndarray, x_obs: np.ndarray, y_obs: np.ndarray) -> np.ndarray:
     """log-moneyness 축 선형보간 + **윙은 마지막 두 관측점의 기울기로 외삽**(flat 아님).
     실제 스큐는 하락 윙으로 갈수록 계속 가팔라지므로 flat 연장은 딥OTM 풋 IV를 과소평가한다
-    (WORKPLAN2 B4). IV(%)는 [0.1, 500.0]으로 클립해 비정상 외삽을 막는다."""
+    (WORKPLAN2 B4). IV는 [1e-3, 5.0]으로 클립해 비정상 외삽을 막는다."""
     order = np.argsort(x_obs)
     xs, ys = x_obs[order], y_obs[order]
     out = np.interp(x_new, xs, ys)  # 범위 안은 선형보간, 밖은 일단 flat
@@ -35,7 +48,7 @@ def _interp_extrap(x_new: np.ndarray, x_obs: np.ndarray, y_obs: np.ndarray) -> n
         left, right = x_new < xs[0], x_new > xs[-1]
         out[left] = ys[0] + lo_sl * (x_new[left] - xs[0])
         out[right] = ys[-1] + hi_sl * (x_new[right] - xs[-1])
-    return np.clip(out, 0.1, 500.0)  # IV 컬럼은 퍼센트; 소수 [0.001, 5]와 동일
+    return np.clip(out, 1e-3, 5.0)
 
 
 def fill_iv_smile(chain: pd.DataFrame, spot: float | None = None) -> pd.DataFrame:
@@ -152,7 +165,6 @@ class Levels:
     put_wall_below: float | None = None   # 스팟 아래 |풋 GEX| 최대 (하단 Gamma Wall)
     zero_gamma_lo: float | None = None    # 파라미터·가정 민감도 밴드 하단
     zero_gamma_hi: float | None = None    # 〃 상단 (WORKPLAN Phase 4-2: 단일 점 표기 금지)
-    max_pain_full: float | None = None   # 전 행사가·계약 기준
     max_pain_20: float | None = None      # windowed MaxPain ±20% (민감도 병기, WORKPLAN2 B5)
     max_pain_40: float | None = None      # 〃 ±40%
 
@@ -270,15 +282,12 @@ def gex_profile(
     multiplier: float = CONTRACT_MULTIPLIER,
     sign_overrides: SignOverrides | None = None,
     iv_sticky_moneyness: bool = False,
-    reference_spot: float | None = None,
 ) -> pd.Series:
     """Net GEX 프로파일. iv_sticky_moneyness=False(기본)는 sticky-strike(행사가별 IV 고정),
     True는 sticky-moneyness(스마일이 스팟 따라 평행이동) — 둘의 Zero Gamma 차이가
     이 모델의 지배적 불확실성 중 하나다(analyze()의 민감도 밴드에서 사용)."""
     t = _time_to_expiry(chain["expiry"].iloc[0], as_of)
-    if iv_sticky_moneyness and reference_spot is None:
-        raise ValueError("sticky-moneyness requires the observed reference_spot")
-    ref_spot = float(reference_spot) if reference_spot is not None else float(np.median(spot_grid))
+    ref_spot = float(np.median(spot_grid))
     iv = fill_iv_smile(chain, ref_spot)["iv"].to_numpy() / 100
     strike = chain["strike"].to_numpy()
     is_call = (chain["type"] == "C").to_numpy()
@@ -323,12 +332,30 @@ def _interp_zero_cross(profile: pd.Series, near: float | None = None) -> float |
     return min(crossings, key=lambda c: abs(c - near))
 
 
-def compute_max_pain(chain: pd.DataFrame, spot: float | None = None, moneyness_range: float = 0.3) -> float | None:
-    """spot=None은 전 행사가·계약의 내재가치 합 최소점; spot 제공 시 windowed 근사.
+STALE_OI_VOL_MULT = 200  # OI가 당일 거래량의 이 배수를 넘고 딥(±15% 밖)이면 "방치된 잔존분"으로 보고 제외
 
-    OI는 청산되지 않은 계약 수다. 당일 거래량이 작아도 유효하므로 삭제하지 않는다.
-    이 목적함수는 미래 결제가격으로의 수렴을 의미하지 않는다.
+
+def _drop_stale_oi(chain: pd.DataFrame, spot: float | None) -> pd.DataFrame:
+    """딥ITM/OTM(±15% 밖)에서 OI가 당일 거래량의 STALE_OI_VOL_MULT 배를 넘는 행사가를
+    제외한다 — 주가가 크게 움직인 뒤에도 안 정리된 잔존 미결제약정(SK하이닉스 1,050,000
+    콜 72,014계약 / 당일 16계약 사례). volume 컬럼이 없으면 원본을 그대로 돌려준다."""
+    if spot is None or "volume" not in chain.columns:
+        return chain
+    deep = (chain["strike"] < spot * 0.85) | (chain["strike"] > spot * 1.15)
+    stale = deep & (chain["oi"] > STALE_OI_VOL_MULT * chain["volume"].clip(lower=1))
+    return chain[~stale] if stale.any() else chain
+
+
+def compute_max_pain(chain: pd.DataFrame, spot: float | None = None, moneyness_range: float = 0.3) -> float | None:
+    """스팟 ±moneyness_range 안의 근월 하위체인으로만 MaxPain을 계산한다 (windowed·비표준).
+
+    표준 MaxPain은 전 행사가·전 계약을 쓰지만, SK하이닉스처럼 딥ITM 저행사가에 오래된
+    잔존 미결제약정(1,050,000 콜 72,014계약, 당일 거래량 16계약)이 전체 OI의 90%를
+    차지하는 종목에서는 그 스톡이 call_pain 합을 지배해 MaxPain이 스팟보다 40%+ 아래로
+    끌려간다. 후보 행사가뿐 아니라 내재가치 합산에 쓰는 '계약'도 같은 밴드로 제한하고,
+    추가로 _drop_stale_oi 로 방치 잔존분을 명시 제외한다 (RECONCILIATION.md O1 / WORKPLAN2 B5).
     """
+    chain = _drop_stale_oi(chain, spot)
     all_strikes = np.sort(chain["strike"].unique())
     if len(all_strikes) == 0:
         return None
@@ -451,8 +478,8 @@ def find_walls(
         (chain_with_greeks["strike"] >= spot * (1 - moneyness_range))
         & (chain_with_greeks["strike"] <= spot * (1 + moneyness_range))
     ]
-    call_gex = near[near["type"] == "C"].assign(gex=lambda x: x["gex"].abs()).groupby("strike")["gex"].sum()
-    put_gex = near[near["type"] == "P"].assign(gex=lambda x: x["gex"].abs()).groupby("strike")["gex"].sum()
+    call_gex = near[near["type"] == "C"].groupby("strike")["gex"].sum()
+    put_gex = near[near["type"] == "P"].groupby("strike")["gex"].sum()
 
     call_wall = float(call_gex.idxmax()) if not call_gex.empty and call_gex.max() > 0 else None
     put_wall = float(put_gex.abs().idxmax()) if not put_gex.empty and put_gex.abs().max() > 0 else None
@@ -602,7 +629,7 @@ def analyze(
             if sm != 1.0 and "iv" in ch.columns:
                 ch["iv"] = ch["iv"] * sm
             p = gex_profile(ch, as_of, grid, r=r + dr, q=q + dq, multiplier=multiplier,
-                            sign_overrides=sign_overrides, iv_sticky_moneyness=sticky, reference_spot=spot)
+                            sign_overrides=sign_overrides, iv_sticky_moneyness=sticky)
             zc = _interp_zero_cross(p, near=spot)
             if zc is not None:
                 zg_samples.append(zc)
@@ -611,7 +638,6 @@ def analyze(
     levels = Levels(
         spot=spot,
         max_pain=max_pain,
-        max_pain_full=compute_max_pain(chain),
         dex_neutral_maxpain=dex_neutral,
         zero_gamma=zero_gamma,
         call_wall=call_wall,
@@ -629,7 +655,16 @@ def analyze(
 
 
 def build_scenarios(levels: Levels) -> list[dict]:
-    """관찰 레벨을 정리한다. 레벨 위치만으로 미래 가격·헤지 방향을 추론하지 않는다."""
+    """OI(감마)가 집중된 레벨을 스팟 위/아래로 정리해 보여준다. 방향 예측이 아니라
+    "가격이 이 레벨에 닿으면 딜러 헤지 흐름이 바뀔 수 있는 지점"의 나열이다.
+
+    ⚠️ 각 note의 딜러 헤지 방향(매수/매도, 증폭/완충)은 미국식 부호 규약(딜러 콜 롱·풋
+    숏)을 전제한 것이다. KRX에서는 이 규약이 반대일 수 있어(모듈 docstring / KB증권
+    데이터 참고) 방향은 "규약이 맞다면"의 조건부로 읽어야 한다. 레벨의 **위치**는
+    부호 규약과 무관하게 유효하다.
+
+    'invalidation'은 손절가가 아니라, 그 레벨 구조가 깨졌을 때 다음으로 볼 반대편
+    구조적 레벨이다 — 진입가·리스크 허용도와 무관하게 누구에게나 같은 값."""
     spot = levels.spot
     scenarios = []
 
@@ -651,11 +686,11 @@ def build_scenarios(levels: Levels) -> list[dict]:
             invalidation = levels.put_wall_below
         scenarios.append(
             {
-                "name": "상단 감마 집중 레벨",
+                "name": "Bullish Squeeze",
                 "trigger": f"{spot:,.1f} 상향 돌파",
                 "target": f"{upper_target:,.1f}",
                 "invalidation": f"{invalidation:,.1f}" if invalidation is not None else None,
-                "note": "상단의 감마 가중 콜 OI 집중 레벨. 이 레벨만으로 순감마 부호나 실제 딜러 헤지 방향을 알 수 없다",
+                "note": "콜 감마가 가장 집중된 상단 레벨(Call Wall / 상단 Gamma Wall). 규약이 맞다면 이 위에서 딜러 매수 헤지가 상승을 증폭할 수 있고, 규약이 반대면 완충 구간이 된다",
             }
         )
     if levels.max_pain:
@@ -671,11 +706,11 @@ def build_scenarios(levels: Levels) -> list[dict]:
             box_invalidation = None
         scenarios.append(
             {
-                "name": "부분 체인 최소 내재가치",
+                "name": "Base Case (박스권)",
                 "trigger": f"{levels.max_pain:,.1f} 부근 유지",
                 "target": f"{levels.max_pain:,.1f}",
                 "invalidation": box_invalidation,
-                "note": "부분 체인에서 만기 내재가치 합이 최소인 행사가. 가격 수렴, 박스권 또는 Theta 우세를 의미하지 않는다",
+                "note": "만기 수렴 시 MaxPain 근방으로 가격이 수렴하는 경향(통계적 근거는 약함, ±20/30/40% 밴드 민감), Theta decay 우세",
             }
         )
     bearish_trigger = levels.zero_gamma
@@ -686,11 +721,11 @@ def build_scenarios(levels: Levels) -> list[dict]:
         bearish_invalidation = levels.call_wall if (levels.call_wall is not None and levels.call_wall > spot) else levels.call_wall_above
         scenarios.append(
             {
-                "name": "하단 레벨·감마 영점",
-                "trigger": f"{bearish_trigger:,.1f} 하향 이탈" if bearish_trigger is not None else "하단 감마 집중 레벨 관찰",
+                "name": "Bearish Regime Shift",
+                "trigger": f"{bearish_trigger:,.1f} 하향 이탈" if bearish_trigger is not None else "Zero Gamma 이탈",
                 "target": f"{bearish_target:,.1f}" if bearish_target is not None else "-",
                 "invalidation": f"{bearish_invalidation:,.1f}" if bearish_invalidation is not None else None,
-                "note": "Zero Gamma가 있으면 가정 모형의 순감마 영점이다. 어느 쪽이 양수인지는 프로파일을 확인해야 하며 실제 딜러 포지션은 미확인이다",
+                "note": "합산 감마 부호가 바뀌는 레벨(Zero Gamma). 규약이 맞다면 이 아래에서 딜러 헤지가 추세를 가속(Long→Short Gamma), 규약이 반대면 반대 해석. 위치 자체는 부호 규약에 불변",
             }
         )
     return scenarios
