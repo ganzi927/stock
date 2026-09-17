@@ -138,7 +138,7 @@ class AuditTests(unittest.TestCase):
 
     def test_ai_sentiment_and_rejection(self):
         fgi=dict(total=50.,trend=50.,sentiment=20.,indicators={})
-        self.assertIn('각각 역산한 점수의 평균',outlook._fmt_fgi(fgi))
+        self.assertIn('투심 낮음=평활 변동성·풋콜 거래량비 높음',outlook._fmt_fgi(fgi))
         self.assertEqual(outlook._unverified_numbers('레벨 9999.0','레벨 1000.0'),[9999.0])
 
 if __name__=='__main__':

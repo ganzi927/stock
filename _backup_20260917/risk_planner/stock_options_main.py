@@ -79,7 +79,7 @@ def build_stock_option_section(name: str, isu_cd: str, bas_dd: str, as_of: date,
         if 'q' in metric['dependencies']:
             metric['reasons'].extend('q: '+reason for reason in dividend_reasons)
     quality['dividend_records'] = [{k:(v.isoformat() if isinstance(v,date) else v) for k,v in d.items()} for d in confirmed_divs]
-    facts = option_context(title, chain, spot, as_of, quality, spot_unit='원')
+    facts = option_context(title, chain, spot, as_of, quality)
     if not quality['model_usable']:
         return wrap_option_section(facts), facts
     try:
@@ -139,7 +139,6 @@ def build_stock_option_section(name: str, isu_cd: str, bas_dd: str, as_of: date,
         risk_reversal=risk_reversal,
         synth_df=synth_df,
         positioning_skew=skew,
-        risk_planner_id=isu_cd,
     )
     return wrap_option_section(facts, html), facts
 

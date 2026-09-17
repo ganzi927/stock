@@ -35,17 +35,6 @@ def series(n=500):
     return pd.DataFrame(dict(date=pd.bdate_range(end=ASOF,periods=n),raw=[1.]*n,score=[60.]*n))
 
 class QualityTests(unittest.TestCase):
-    def test_putcall_raw_is_daily_but_score_uses_ma5(self):
-        raw=pd.Series(np.linspace(.2,2.,300))
-        raw.iloc[-1]=.1
-        source=pd.DataFrame({'date':pd.bdate_range(end=ASOF,periods=300),'putcall':raw})
-        actual=ind.compute_putcall_real(source)
-        self.assertEqual(actual.raw.iloc[-1],.1)
-        expected=ind._rolling_percentile_score(raw.rolling(5,min_periods=1).mean(),invert=True,window=252)
-        self.assertAlmostEqual(actual.score.iloc[-1],expected.iloc[-1])
-        daily_score=ind._rolling_percentile_score(raw,invert=True,window=252)
-        self.assertNotEqual(actual.score.iloc[-1],daily_score.iloc[-1])
-
     def test_putcall_regular_session_only(self):
         import krx_api
         rows=[]
@@ -266,13 +255,6 @@ class QualityTests(unittest.TestCase):
         self.assertAlmostEqual(pain['distance_pct'],(1300000/1750000-1)*100)
         for row in rows:
             self.assertEqual(set(row),{'name','value','distance_pct','position','definition','limitation'})
-        from ai_commentary import build_options_prompt
-        prompt=build_options_prompt('test',levels.spot,levels,0,0,0,rows)
-        research=outlook.section_facts('test','fixture',levels.spot,levels,rows,0,0,0,None,None,None)
-        self.assertIn('1,300,000.0',prompt)
-        self.assertIn('1,300,000.0',' '.join(research['observed_levels']))
-        for forbidden in ('Trigger:','Target:','무효화','부근 유지','이탈 시'):
-            self.assertNotIn(forbidden,prompt)
         with patch.object(options_report,'gex_profile_chart',return_value=''),patch.object(options_report,'vol_smile_chart',return_value=''):
             page=options_report.build_section_html('test','fixture',levels.spot,levels,pd.DataFrame(),pd.DataFrame(),rows,0,0,0,None)
         text=BeautifulSoup(page,'html.parser').get_text(' ',strip=True)

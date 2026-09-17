@@ -1,0 +1,833 @@
+{
+  "quality_policy_version": 2,
+  "quality": {
+    "fgi": {
+      "Momentum": {
+        "source": "네이버 KOSPI200",
+        "as_of": "2026-09-16",
+        "kind": "observed",
+        "reasons": [],
+        "dependencies": [
+          "kospi200.close"
+        ],
+        "available_at": null,
+        "backtest_eligible": false,
+        "backtest_reason": "원자료 공개시각/과거 수정 이력 미확인",
+        "usage": "context"
+      },
+      "Volatility": {
+        "source": "KRX VKOSPI",
+        "as_of": "2026-09-16",
+        "kind": "observed",
+        "reasons": [],
+        "dependencies": [
+          "vkospi"
+        ],
+        "available_at": null,
+        "backtest_eligible": false,
+        "backtest_reason": "원자료 공개시각/과거 수정 이력 미확인",
+        "usage": "context"
+      },
+      "Credit Spread": {
+        "source": "ECOS BBB-/AA- 금리",
+        "as_of": "2026-09-11",
+        "kind": "stale",
+        "reasons": [
+          "기준일과 입력 거래일 불일치"
+        ],
+        "dependencies": [
+          "credit_spread"
+        ],
+        "available_at": null,
+        "backtest_eligible": false,
+        "backtest_reason": "원자료 공개시각/과거 수정 이력 미확인",
+        "usage": "unavailable"
+      },
+      "Strength": {
+        "source": "KRX/지수 가격 대체",
+        "as_of": "2026-09-16",
+        "kind": "estimated",
+        "reasons": [
+          "수정주가·정확한 구성종목 미검증; 근사 유니버스"
+        ],
+        "dependencies": [
+          "market.close",
+          "market.mktcap"
+        ],
+        "available_at": null,
+        "backtest_eligible": false,
+        "backtest_reason": "원자료 공개시각/과거 수정 이력 미확인",
+        "usage": "research"
+      },
+      "Breadth": {
+        "source": "KRX/지수 거래량 대체",
+        "as_of": "2026-09-16",
+        "kind": "estimated",
+        "reasons": [
+          "실제 KOSPI200 구성종목 대신 시총 상위 200 근사"
+        ],
+        "dependencies": [
+          "market.fluc_rt",
+          "market.trdvol",
+          "market.mktcap"
+        ],
+        "available_at": null,
+        "backtest_eligible": false,
+        "backtest_reason": "원자료 공개시각/과거 수정 이력 미확인",
+        "usage": "research"
+      },
+      "Put/Call Ratio": {
+        "source": "KRX 정규 옵션 거래량",
+        "as_of": "2026-09-16",
+        "kind": "observed",
+        "reasons": [],
+        "dependencies": [
+          "call_volume",
+          "put_volume"
+        ],
+        "available_at": null,
+        "backtest_eligible": false,
+        "backtest_reason": "원자료 공개시각/과거 수정 이력 미확인",
+        "usage": "context"
+      },
+      "Safe Haven Demand": {
+        "source": "ECOS 합성채권 또는 네이버 ETF 가격",
+        "as_of": "2026-09-11",
+        "kind": "stale",
+        "reasons": [
+          "기준일과 입력 거래일 불일치"
+        ],
+        "dependencies": [
+          "kospi200.close",
+          "bond_return"
+        ],
+        "available_at": null,
+        "backtest_eligible": false,
+        "backtest_reason": "원자료 공개시각/과거 수정 이력 미확인",
+        "usage": "unavailable"
+      }
+    },
+    "options": [
+      {
+        "title": "코스피200 옵션 (정규월물)",
+        "quality": {
+          "policy_version": 2,
+          "inputs": {
+            "spot": {
+              "source": "KRX/네이버 기초자산 종가",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "chain": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "iv": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "expiry": {
+              "source": "요일 계산(명목 만기)",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "공식 최종거래일 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "r": {
+              "source": "시장 금리 근사",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "기간 대응 무위험 할인곡선으로 검증되지 않음"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "q": {
+              "source": "가정",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "dealer_position": {
+              "source": "콜 롱·풋 숏 가정",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "실제 딜러 순재고 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            }
+          },
+          "metrics": {
+            "greeks": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ]
+            },
+            "walls": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ]
+            },
+            "signed_exposure": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인"
+              ]
+            },
+            "zero_gamma": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인"
+              ]
+            },
+            "pot": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ]
+            },
+            "max_pain": {
+              "usage": "research",
+              "dependencies": [
+                "chain",
+                "expiry"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인"
+              ]
+            }
+          },
+          "errors": [],
+          "context_usable": true,
+          "model_usable": true,
+          "iv_observed_oi_coverage": 1.0,
+          "iv_methods": {
+            "observed": 682
+          }
+        }
+      },
+      {
+        "title": "코스피200 위클리 옵션 (목요일 만기)",
+        "quality": {
+          "policy_version": 2,
+          "inputs": {
+            "spot": {
+              "source": "KRX/네이버 기초자산 종가",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "chain": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "iv": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "expiry": {
+              "source": "요일 계산(명목 만기)",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "공식 최종거래일 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "r": {
+              "source": "시장 금리 근사",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "기간 대응 무위험 할인곡선으로 검증되지 않음"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "q": {
+              "source": "가정",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "dealer_position": {
+              "source": "콜 롱·풋 숏 가정",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "실제 딜러 순재고 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            }
+          },
+          "metrics": {
+            "greeks": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ]
+            },
+            "walls": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ]
+            },
+            "signed_exposure": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인"
+              ]
+            },
+            "zero_gamma": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인"
+              ]
+            },
+            "pot": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개"
+              ]
+            },
+            "max_pain": {
+              "usage": "research",
+              "dependencies": [
+                "chain",
+                "expiry"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인"
+              ]
+            }
+          },
+          "errors": [],
+          "context_usable": true,
+          "model_usable": true,
+          "iv_observed_oi_coverage": 1.0,
+          "iv_methods": {
+            "observed": 252
+          }
+        }
+      },
+      {
+        "title": "삼성전자 옵션",
+        "quality": {
+          "policy_version": 2,
+          "inputs": {
+            "spot": {
+              "source": "KRX/네이버 기초자산 종가",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "chain": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "iv": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "expiry": {
+              "source": "요일 계산(명목 만기)",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "공식 최종거래일 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "r": {
+              "source": "시장 금리 근사",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "기간 대응 무위험 할인곡선으로 검증되지 않음"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "q": {
+              "source": "q=1.00%(종목별 평상시 가정, 현금배당)",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "dealer_position": {
+              "source": "콜 롱·풋 숏 가정",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "실제 딜러 순재고 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            }
+          },
+          "metrics": {
+            "greeks": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "walls": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "signed_exposure": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "zero_gamma": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "pot": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "max_pain": {
+              "usage": "research",
+              "dependencies": [
+                "chain",
+                "expiry"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인"
+              ]
+            }
+          },
+          "errors": [],
+          "context_usable": true,
+          "model_usable": true,
+          "iv_observed_oi_coverage": 1.0,
+          "dividend_records": [],
+          "iv_methods": {
+            "observed": 50
+          }
+        }
+      },
+      {
+        "title": "SK하이닉스 옵션",
+        "quality": {
+          "policy_version": 2,
+          "inputs": {
+            "spot": {
+              "source": "KRX/네이버 기초자산 종가",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "chain": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "iv": {
+              "source": "KRX Open API 옵션 일별매매정보",
+              "as_of": "2026-09-16",
+              "kind": "observed",
+              "reasons": [],
+              "dependencies": [],
+              "available_at": null
+            },
+            "expiry": {
+              "source": "요일 계산(명목 만기)",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "공식 최종거래일 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "r": {
+              "source": "시장 금리 근사",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "기간 대응 무위험 할인곡선으로 검증되지 않음"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "q": {
+              "source": "q=0.30%(종목별 평상시 가정, 현금배당)",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ],
+              "dependencies": [],
+              "available_at": null
+            },
+            "dealer_position": {
+              "source": "콜 롱·풋 숏 가정",
+              "as_of": "2026-09-16",
+              "kind": "estimated",
+              "reasons": [
+                "실제 딜러 순재고 미확인"
+              ],
+              "dependencies": [],
+              "available_at": null
+            }
+          },
+          "metrics": {
+            "greeks": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "walls": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "signed_exposure": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "zero_gamma": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "chain",
+                "iv",
+                "expiry",
+                "r",
+                "q",
+                "dealer_position"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "dealer_position: 실제 딜러 순재고 미확인",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "pot": {
+              "usage": "research",
+              "dependencies": [
+                "spot",
+                "iv",
+                "expiry",
+                "r",
+                "q"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인",
+                "r: 기간 대응 무위험 할인곡선으로 검증되지 않음",
+                "q: 배당·선도가 모형 추정치; 실제 배당의 검증과 별개",
+                "q: 만기 내 배당 일정 완전성 미확인; 누락을 배당 0으로 해석하지 않음"
+              ]
+            },
+            "max_pain": {
+              "usage": "research",
+              "dependencies": [
+                "chain",
+                "expiry"
+              ],
+              "reasons": [
+                "expiry: 공식 최종거래일 미확인"
+              ]
+            }
+          },
+          "errors": [],
+          "context_usable": true,
+          "model_usable": true,
+          "iv_observed_oi_coverage": 1.0,
+          "dividend_records": [],
+          "iv_methods": {
+            "observed": 88
+          }
+        }
+      }
+    ]
+  },
+  "anchor": "2026-09-16",
+  "fgi_as_of": "2026-09-16",
+  "option_bas_dd": "2026-09-16",
+  "options_complete": true,
+  "has_stock_options": true,
+  "has_outlook": true,
+  "total_kfgi": 52.722443559096945,
+  "generated_at": "2026-09-17T08:03:36+09:00",
+  "attempts": 10,
+  "as_of_requested": "2026-09-17"
+}

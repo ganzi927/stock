@@ -95,8 +95,8 @@ def option_quality(chain, spot, as_of, r_source, q_source):
             'context_usable':not fatal,'model_usable':not fatal and bool(observed.any()),'iv_observed_oi_coverage':coverage}
 
 
-def option_context(title, chain, spot, as_of, quality, spot_unit='포인트'):
-    facts={'usage':'context','title':title,'as_of':as_of.isoformat(),'spot':spot if quality['context_usable'] else None,'spot_unit':spot_unit,'observations':{},'quality':quality}
+def option_context(title, chain, spot, as_of, quality):
+    facts={'usage':'context','title':title,'as_of':as_of.isoformat(),'spot':spot if quality['context_usable'] else None,'observations':{},'quality':quality}
     if quality['context_usable']:
         for typ,label in [('C','call'),('P','put')]:
             sub=chain[chain.type==typ]
@@ -118,26 +118,8 @@ def quality_html(quality):
 
 def wrap_option_section(facts, research_html=None, error=None):
     q=facts['quality']; esc=html.escape
-    labels={'call_oi':'콜 OI','put_oi':'풋 OI','call_volume':'콜 당일 거래량','put_volume':'풋 당일 거래량'}
-    vals=' · '.join(esc(labels.get(k,k))+': '+format(v,',')+'계약' for k,v in facts['observations'].items()) or '계산 불가 — '+'; '.join(q['errors'])
-    obs=facts['observations']
-    call_oi=obs.get('call_oi'); put_oi=obs.get('put_oi')
-    call_vol=obs.get('call_volume'); put_vol=obs.get('put_volume')
-    oi_ratio=(put_oi/call_oi) if isinstance(call_oi,(int,float)) and call_oi>0 and isinstance(put_oi,(int,float)) else None
-    vol_ratio=(put_vol/call_vol) if isinstance(call_vol,(int,float)) and call_vol>0 and isinstance(put_vol,(int,float)) else None
-    ratio_text=[]
-    if oi_ratio is not None: ratio_text.append(f'풋/콜 OI 비율은 {oi_ratio:.2f}')
-    if vol_ratio is not None: ratio_text.append(f'풋/콜 당일 거래량 비율은 {vol_ratio:.2f}')
-    ratio_sentence='이고, '.join(ratio_text)+'입니다. ' if ratio_text else ''
-    explanation=(
-        '<div class="beginner-note"><span class="beginner-note-label">관측값 읽기 (초보자용)</span>'
-        +esc(ratio_sentence)
-        +'OI(미결제약정)는 아직 청산되지 않은 계약의 누적 잔량이고, 거래량은 기준일에 거래된 계약 수입니다. '
-        +'콜과 풋 중 어느 쪽 수량이 많다는 사실만으로 매수·매도 주체, 시장 방향 또는 실제 딜러 순포지션은 알 수 없습니다.</div>'
-    )
-    spot=facts.get('spot')
-    spot_text=f'{spot:,.1f} {facts.get("spot_unit", "포인트")}' if isinstance(spot,(int,float)) and math.isfinite(spot) else '확인 불가'
-    safe=f'<section><h2>{esc(facts["title"])} — 관측 요약</h2><p>기준일 {facts["as_of"]} 종가: {esc(spot_text)} · 실시간 시세 아님</p><p>{esc(vals)}</p>{explanation}{quality_html(q)}</section>'
+    vals=' · '.join(esc(k)+': '+format(v,',') for k,v in facts['observations'].items()) or '계산 불가 — '+'; '.join(q['errors'])
+    safe=f'<section><h2>{esc(facts["title"])} — 관측 요약</h2><p>기준일 {facts["as_of"]}</p><p>{esc(vals)}</p><p>콜/풋 수량이며 투자자의 방향성이나 딜러 순포지션을 뜻하지 않습니다.</p>{quality_html(q)}</section>'
     if research_html:
         safe+='<details class="research-panel"><summary>연구용 모형 — 기본 종합 판단·AI 입력에서 제외</summary><p>미검증 가정과 대체값에 의존합니다. 지지·저항·미래 확률의 검증 결과가 아닙니다.</p>'+research_html+'</details>'
     else:
@@ -166,15 +148,11 @@ def attach_indicator_quality(result, series, as_of, source, dependencies, resear
 
 def indicator_quality_html(results, included):
     rows=[]
-    warnings=[]
     for r in results:
         e=r.evidence or {}
-        if e.get('kind') in ('stale','missing','invalid'):
-            warnings.append(r.name+': '+e['kind']+' — '+'; '.join(e.get('reasons',[])))
         reasons=list(e.get('reasons',[]))
         if r.low_confidence: reasons.append('점수화 워밍업 부족')
         if r.name not in included and not reasons: reasons.append('매크로 배경/합성 대상 아님')
         cols=[r.name,'합성 포함' if r.name in included else '합성 제외',e.get('kind','미확인'),e.get('source','미확인'),e.get('as_of') or '미확인',', '.join(e.get('dependencies',[])), '; '.join(reasons) or '현재 상태 설명용; 전략 검증 전']
         rows.append('<tr>'+''.join('<td>'+html.escape(str(c))+'</td>' for c in cols)+'</tr>')
-    warning_html='<p class="warn-banner">'+html.escape(' / '.join(warnings))+'</p>' if warnings else ''
-    return '<section><h2>판단용 맥락 — 데이터 상태</h2><p>사용 구성: '+html.escape(', '.join(included) or '없음 — 계산 불가')+'</p>'+warning_html+'<details class="quality-details"><summary>지표별 출처·기준일·제외 사유</summary><p>관측 상태는 매매 신호의 검증을 뜻하지 않습니다. 공개시각이 확인되지 않은 과거 자료는 체결 가능한 백테스트 입력으로 승인되지 않습니다.</p><table class="level-table"><tr><th>지표</th><th>합성</th><th>상태</th><th>출처</th><th>기준일</th><th>의존 입력</th><th>사유</th></tr>'+''.join(rows)+'</table></details></section>'
+    return '<section><h2>판단용 맥락 — 데이터 상태</h2><p>사용 구성: '+html.escape(', '.join(included) or '없음 — 계산 불가')+'</p><p>관측 상태는 매매 신호의 검증을 뜻하지 않습니다. 공개시각이 확인되지 않은 과거 자료는 체결 가능한 백테스트 입력으로 승인되지 않습니다.</p><table class="level-table"><tr><th>지표</th><th>합성</th><th>상태</th><th>출처</th><th>기준일</th><th>의존 입력</th><th>사유</th></tr>'+''.join(rows)+'</table></section>'

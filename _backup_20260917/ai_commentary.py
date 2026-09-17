@@ -188,7 +188,8 @@ def build_options_prompt(
     if scenarios:
         lines.append("관찰 레벨(PoT는 만기까지의 개별 터치확률이며 시나리오 확률이 아닙니다):")
         for sc in scenarios:
-            lines.append(f"- {sc['name']}: {sc['value']:,.1f}, 종가 대비 {sc['distance_pct']:+.2f}% ({sc['position']}); 정의: {sc['definition']}; 한계: {sc['limitation']}")
+            inval = f", 무효화 레벨(이 시나리오가 깨졌을 때의 다음 구조적 레벨— 개인 손절가 아님): {sc['invalidation']}" if sc.get("invalidation") else ""
+            lines.append(f"- {sc['name']}: {sc['trigger']} → {sc['target']}{inval} ({sc['note']})")
     if investor_flow_note:
         lines.append("")
         lines.append(f"실제 투자자별 매매 동향(오늘 사실, 예측 아님): {investor_flow_note}")

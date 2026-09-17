@@ -77,4 +77,4 @@
 
 2026-09-17 초보 투자 보조 리뷰 반영: 종가·단위 우선 노출, 기술 품질표 접힘과 핵심 경고 유지,
 관측 레벨 계약, 기본 종합 LLM 0회, 역산 점수 설명 및 계산기 입력 변경 회귀 검증.
-`tests/test_math.py` 전체 통과, `unittest discover -s tests -p "test_*.py"` 40개 통과.
+`tests/test_math.py` 전체 통과, `unittest discover -s tests -p "test_*.py"` 39개 통과.

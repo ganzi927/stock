@@ -7,7 +7,6 @@ minimalist-ui / redesign-existing-projects 스킬 가이드를 따라
 from __future__ import annotations
 
 from datetime import date
-import html
 
 from charts import gauge_chart, total_trend_chart, trend_chart, zone_colors_css, zone_label
 from indicators import MACRO_BACKDROP, IndicatorResult
@@ -175,12 +174,12 @@ details img { max-width: 100%; margin-top: 14px; }
 
 .section-block { margin-bottom: 64px; }
 
-.ai-note, .beginner-note {
+.ai-note {
   background: #F2F0EA; border: 1px solid var(--border); border-radius: 12px;
   padding: 16px 20px; font-size: 14px; line-height: 1.7; color: var(--ink);
   margin: 16px 0 28px;
 }
-.ai-note .ai-note-label, .beginner-note .beginner-note-label {
+.ai-note .ai-note-label {
   font-size: 11px; font-weight: 600; letter-spacing: 0.04em; color: var(--muted);
   text-transform: uppercase; margin-bottom: 8px; display: block;
 }
@@ -218,74 +217,6 @@ def _corr_table(corr) -> str:
       </details>"""
 
 
-def _beginner_fgi_explanation(
-    results: list[IndicatorResult],
-    included: list[str],
-    total_score: float | None,
-    trend_score: float | None,
-    sentiment_score: float | None,
-) -> str:
-    """API 없이도 남는 현재 상태 설명. 점수와 원자료를 혼동하지 않게 한다."""
-    by_name = {r.name: r for r in results}
-    sentences = [
-        "점수는 최근 252거래일 안에서 계산한 백분위를 바탕으로 합니다. Momentum 등 일반 점수는 백분위 그대로이고, "
-        "Volatility·Put/Call Ratio·Credit Spread는 100−백분위인 역산 점수입니다. "
-        "일반 20점은 점수 입력이 과거 대비 낮은 쪽, 역산 20점은 평활 원자료 등이 과거 대비 높은 쪽이라는 뜻입니다."
-    ]
-    if trend_score is not None and sentiment_score is not None:
-        trend_state = "강한 편" if trend_score >= 60 else "약한 편" if trend_score <= 40 else "중간"
-        sent_state = "역산 점수 평균이 높은 편" if sentiment_score >= 60 else "역산 점수 평균이 낮은 편" if sentiment_score <= 40 else "중간"
-        sentences.append(
-            f"현재 추세지수는 {trend_score:.0f}점으로 {trend_state}이고, 투심지수는 "
-            f"{sentiment_score:.0f}점으로 {sent_state}입니다. 두 값이 엇갈리면 가격 흐름과 "
-            "옵션 관련 통계가 서로 다른 상태라는 뜻이지, 다음 방향을 예측한다는 뜻은 아닙니다."
-        )
-    def indicator_sentence(r: IndicatorResult) -> str | None:
-        if r.score is None:
-            return None
-        if r.name == "Momentum":
-            raw = f" 현재 지수/125일 이동평균 비율은 {r.raw:.3f}배이고," if r.raw is not None else ""
-            return f"Momentum은 코스피200의 중기 가격 흐름을 자기 과거와 비교합니다.{raw} 252일 백분위 점수는 {r.score:.1f}점입니다."
-        if r.name == "Volatility":
-            if r.is_proxy:
-                return f"Volatility 대체값은 20일 실현변동성을 역산한 {r.score:.1f}점입니다. VKOSPI 관측값과 구분합니다."
-            raw = f" 기준일 VKOSPI는 {r.raw:.2f}이고," if r.raw is not None else ""
-            return f"Volatility는 VKOSPI 20일 평균을 거꾸로 점수화해 높을수록 변동성 긴장이 과거보다 낮았음을 뜻합니다.{raw} 점수는 {r.score:.1f}점입니다."
-        if r.name == "Put/Call Ratio":
-            raw = f" 기준일 정규세션 풋/콜 거래량비는 {r.raw:.2f}이고," if r.raw is not None else ""
-            return f"Put/Call Ratio는 5일 평균을 거꾸로 점수화해 높을수록 풋 거래량 비율이 과거보다 낮았음을 뜻합니다.{raw} 점수는 {r.score:.1f}점입니다. 당일 표시값(raw)과 점수 입력(5일 평균)은 다릅니다."
-        return None
-    for name in included:
-        r = by_name.get(name)
-        sentence = indicator_sentence(r) if r is not None else None
-        if sentence:
-            sentences.append(sentence)
-    components = [by_name[name] for name in ('Volatility', 'Put/Call Ratio')
-                  if name in included and name in by_name and by_name[name].score is not None]
-    if len(components) == 2:
-        sentences.append(f"투심 구성별 점수 차이는 {abs(components[0].score-components[1].score):.1f}점입니다. 평균이 높아도 두 원자료가 모두 낮다는 뜻은 아니며 각각 확인해야 합니다.")
-    if total_score is not None:
-        sentences.append(
-            f"참고 TOTAL {total_score:.1f}점은 이번 품질 게이트를 통과한 "
-            f"{', '.join(included) if included else '지표 없음'}의 단순 평균이며, 전날과 구성 항목이 다르면 숫자를 그대로 비교하면 안 됩니다."
-        )
-    excluded = [r.name for r in results if r.evidence and r.evidence.get("usage") == "research"]
-    if excluded:
-        research_scores = ", ".join(
-            f"{r.name} {r.score:.1f}점" for r in results
-            if r.name in excluded and r.score is not None
-        )
-        sentences.append(
-            f"연구용 지표의 현재 점수는 {research_scores or ', '.join(excluded)}입니다. "
-            "Strength 실측형은 시총 상위 200종목 중 52주 신고가−신저가 비율을 5일 평활한 값이고, 대체형(proxy)은 지수의 252일 고저 범위 내 위치입니다. "
-            "Breadth는 상승·하락 거래량의 차이를 평활한 값, Credit Spread와 "
-            "Safe Haven Demand는 신용·안전자산 배경을 살펴보는 값입니다. 이 지표들은 자료 또는 방법론이 충분히 검증되지 않아 "
-            "TOTAL과 AI 판단에서는 제외하고 아래 연구용 영역에 따로 표시합니다."
-        )
-    body = " ".join(html.escape(s) for s in sentences)
-    return f'<div class="beginner-note"><span class="beginner-note-label">오늘의 지표 읽기 (초보자용)</span>{body}</div>'
-
-
 def build_fgi_section(
     total_score: float | None,
     results: list[IndicatorResult],
@@ -305,10 +236,6 @@ def build_fgi_section(
     total_zone = zone_label(total_score)
     total_bg, total_text = zone_colors_css(total_score)
     total_str = f"{total_score:.1f}" if total_score is not None else "N/A"
-    included = [r.name for r in results if r.evidence and r.evidence.get("usage") == "context"]
-    beginner_html = _beginner_fgi_explanation(
-        results, included, total_score, trend_score, sentiment_score
-    )
 
     subidx_html = ""
     if sentiment_score is not None and trend_score is not None:
@@ -325,7 +252,7 @@ def build_fgi_section(
 
         combo = (
             f"현재 상태: 추세 {_state(trend_score, '강', '중립', '약')}({trend_score:.0f}) · "
-            f"투심 역산 점수 평균 {_state(sentiment_score, '높음', '중간', '낮음')}({sentiment_score:.0f})"
+            f"투심 {_state(sentiment_score, '안심/방심', '중립', '공포/헤지수요')}({sentiment_score:.0f})"
         )
         subidx_html = f"""
       <div class="hero" style="display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start">
@@ -334,7 +261,7 @@ def build_fgi_section(
           <div class="card-note">추세지수 · 실제 사용 구성은 데이터 상태 표 참고</div></div>
         <div><img src="data:image/png;base64,{sent_gauge}"/>
           <div class="score-line"><span class="badge" style="background:{s_bg};color:{s_text}">{zone_label(sentiment_score)}</span></div>
-          <div class="card-note">Volatility·Put/Call 역산 점수 평균 · 구성별 차이는 아래 해설 참고</div></div>
+          <div class="card-note">Volatility·Put/Call · 역행 지표(높음 = 변동성·풋수요 낮음)</div></div>
       </div>
       <div class="card-note" style="margin:12px 0 20px">{combo}.<br/>
       <b>검증 주의</b> — 데이터 품질 조건을 충족한 지표만 합성합니다. 예측력은 별도 검증 전이며 구성은 위 상태표를 확인하세요.<br/>
@@ -394,7 +321,6 @@ def build_fgi_section(
       {subidx_html}
       <div class="trend-wrap"><img src="data:image/png;base64,{total_trend_img}"/></div>
       {_corr_table(corr)}
-      {beginner_html}
       {commentary_html}
 
       <h2>세부 지표</h2>

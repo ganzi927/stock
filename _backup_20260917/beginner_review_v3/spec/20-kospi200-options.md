@@ -176,7 +176,7 @@ DEX/VEX/Charm에 `spot`을 곱해 **명목가치(통화 단위)**로 만든다(�
 
 ---
 
-## H. 관측 레벨 (`build_scenarios`, 호환 함수명)
+## H. 시나리오 (`build_scenarios`)
 
 **REQ-OPT-16.** `build_scenarios`는 호환 함수명을 유지하되 관측 레벨 목록을 반환한다.
 각 항목은 `name`, `value`, `distance_pct`, `position`, `definition`, `limitation`이다.

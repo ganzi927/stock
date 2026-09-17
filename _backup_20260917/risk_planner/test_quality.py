@@ -20,8 +20,8 @@ import stock_options_main
 import outlook
 import report
 import reference_data as ref
-from combined_main import _report_is_current, REPORT_CONTRACT_VERSION
-from dealer_positioning import fill_iv_smile, build_scenarios
+from combined_main import _report_is_current
+from dealer_positioning import fill_iv_smile
 from validate_inputs import inspect_cache
 
 ASOF=date(2026,9,15)
@@ -35,17 +35,6 @@ def series(n=500):
     return pd.DataFrame(dict(date=pd.bdate_range(end=ASOF,periods=n),raw=[1.]*n,score=[60.]*n))
 
 class QualityTests(unittest.TestCase):
-    def test_putcall_raw_is_daily_but_score_uses_ma5(self):
-        raw=pd.Series(np.linspace(.2,2.,300))
-        raw.iloc[-1]=.1
-        source=pd.DataFrame({'date':pd.bdate_range(end=ASOF,periods=300),'putcall':raw})
-        actual=ind.compute_putcall_real(source)
-        self.assertEqual(actual.raw.iloc[-1],.1)
-        expected=ind._rolling_percentile_score(raw.rolling(5,min_periods=1).mean(),invert=True,window=252)
-        self.assertAlmostEqual(actual.score.iloc[-1],expected.iloc[-1])
-        daily_score=ind._rolling_percentile_score(raw,invert=True,window=252)
-        self.assertNotEqual(actual.score.iloc[-1],daily_score.iloc[-1])
-
     def test_putcall_regular_session_only(self):
         import krx_api
         rows=[]
@@ -183,33 +172,6 @@ class QualityTests(unittest.TestCase):
         self.assertIn('지수/125일 이동평균 비율은 1.000배',fgi)
         self.assertIn('Strength',fgi)
 
-    def test_stock_risk_planner_is_user_budget_math_not_recommendation(self):
-        self.assertEqual(options_report.calculate_loss_limit(250000,10,100000),240000)
-        self.assertIsNone(options_report.calculate_loss_limit(250000,1.5,100000))
-        self.assertIsNone(options_report.calculate_loss_limit(250000,1,250000))
-        levels=options_report.Levels(
-            spot=250000.,max_pain=255000.,dex_neutral_maxpain=None,zero_gamma=240000.,
-            call_wall=300000.,put_wall=220000.,strike_min=200000.,strike_max=320000.
-        )
-        scenarios=build_scenarios(levels)
-        panel=options_report._stock_risk_planner_html('005930',250000.,levels,scenarios)
-        self.assertIn('상단 관찰가격',panel)
-        self.assertIn('255,000원',panel)
-        self.assertIn('하단 관찰가격',panel)
-        self.assertIn('240,000원',panel)
-        self.assertNotIn('무효화',panel)
-        self.assertNotIn('distanceRatio',panel)
-        self.assertIn('입력값은 저장하거나 전송하지 않습니다',panel)
-        self.assertIn('entry - loss / qty',panel)
-
-        with patch.object(options_report,'gex_profile_chart',return_value=''),patch.object(options_report,'vol_smile_chart',return_value=''):
-            index_html=options_report.build_section_html(
-                title='코스피200 옵션',expiry_label='fixture',spot=250000.,levels=levels,
-                profile=pd.DataFrame(),chain_with_greeks=pd.DataFrame(),scenarios=scenarios,
-                net_dex=0.,net_vex=0.,net_charm=0.,iv_rank=None
-            )
-        self.assertNotIn('내 손실한도 계산기',index_html)
-
     def test_outlook_explains_each_observation_without_research(self):
         facts=dict(
             usage='context',title='코스피200 옵션 (정규월물)',as_of=ASOF.isoformat(),spot=100.,
@@ -236,99 +198,7 @@ class QualityTests(unittest.TestCase):
 
     def test_legacy_meta_rebuild(self):
         self.assertFalse(_report_is_current({'options_complete':True}))
-        base={'options_complete':True,'quality_policy_version':q.POLICY_VERSION}
-        self.assertFalse(_report_is_current(base))
-        self.assertFalse(_report_is_current(dict(base,report_contract_version=REPORT_CONTRACT_VERSION-1)))
-        self.assertTrue(_report_is_current(dict(base,report_contract_version=REPORT_CONTRACT_VERSION)))
-
-    def test_deterministic_outlook_no_llm_and_no_research(self):
-        fgi=dict(total=60.,trend=40.,sentiment=70.,included=['Momentum'],
-                 indicators={'Momentum':40.,'Strength':99999.},
-                 quality={'Momentum':{'usage':'context'},'Strength':{'usage':'research'}})
-        facts=dict(usage='context',title='삼성전자 옵션',as_of=ASOF.isoformat(),spot=250000.,spot_unit='원',
-                   observations=dict(call_oi=100,put_oi=50,call_volume=20,put_volume=30),levels=['SECRET'])
-        with patch.object(outlook,'generate_commentary') as ai:
-            page=outlook.build_outlook_section(ASOF,fgi,[facts,dict(facts,title='STALE',as_of='2026-09-14')])
-        ai.assert_not_called()
-        self.assertIn('250,000.0 원',page)
-        self.assertIn('풋/콜 OI 비율: 0.50',page)
-        for forbidden in ('SECRET','99999','STALE','상승 추진력','방어수요'):
-            self.assertNotIn(forbidden,page)
-
-    def test_observation_contract_preserves_maxpain_without_price_path(self):
-        from bs4 import BeautifulSoup
-        levels=options_report.Levels(spot=1750000.,max_pain=1300000.,dex_neutral_maxpain=None,
-            zero_gamma=None,call_wall=1800000.,put_wall=1700000.,strike_min=1000000.,strike_max=2000000.)
-        rows=build_scenarios(levels)
-        pain=next(r for r in rows if r['name']=='MaxPain (부분 체인·비표준)')
-        self.assertEqual(pain['value'],1300000.)
-        self.assertEqual(pain['position'],'아래')
-        self.assertAlmostEqual(pain['distance_pct'],(1300000/1750000-1)*100)
-        for row in rows:
-            self.assertEqual(set(row),{'name','value','distance_pct','position','definition','limitation'})
-        from ai_commentary import build_options_prompt
-        prompt=build_options_prompt('test',levels.spot,levels,0,0,0,rows)
-        research=outlook.section_facts('test','fixture',levels.spot,levels,rows,0,0,0,None,None,None)
-        self.assertIn('1,300,000.0',prompt)
-        self.assertIn('1,300,000.0',' '.join(research['observed_levels']))
-        for forbidden in ('Trigger:','Target:','무효화','부근 유지','이탈 시'):
-            self.assertNotIn(forbidden,prompt)
-        with patch.object(options_report,'gex_profile_chart',return_value=''),patch.object(options_report,'vol_smile_chart',return_value=''):
-            page=options_report.build_section_html('test','fixture',levels.spot,levels,pd.DataFrame(),pd.DataFrame(),rows,0,0,0,None)
-        text=BeautifulSoup(page,'html.parser').get_text(' ',strip=True)
-        for forbidden in ('Trigger:','Target:','무효화','부근 유지','이탈 시'):
-            self.assertNotIn(forbidden,text)
-        self.assertIn('1,300,000.0',text)
-
-    def test_score_explanation_inversion_and_strength_definition(self):
-        results=[]
-        for name,score in [('Momentum',20.),('Volatility',20.),('Put/Call Ratio',80.),('Strength',60.)]:
-            r=ind.latest_result(series().assign(score=score),name,False,'fixture')
-            q.attach_indicator_quality(r,series().assign(score=score),ASOF,'test',['price'],
-                                       'research' if name=='Strength' else None)
-            results.append(r)
-        text=report._beginner_fgi_explanation(results,['Momentum','Volatility','Put/Call Ratio'],40.,20.,50.)
-        for expected in ('100−백분위','역산 20점','높은 쪽','당일 표시값(raw)','5일 평균','60.0점','52주 신고가−신저가','252일 고저 범위'):
-            self.assertIn(expected,text)
-        self.assertNotIn('상승·하락 종목의 규모',text)
-
-    def test_observed_close_and_quality_disclosure(self):
-        from bs4 import BeautifulSoup
-        c=chain();quality=q.option_quality(c,100.,ASOF,'r','q')
-        for unit in ('원','포인트'):
-            facts=q.option_context('test',c,100.,ASOF,quality,spot_unit=unit)
-            page=BeautifulSoup(q.wrap_option_section(facts,'RESEARCH'),'html.parser')
-            text=page.section.get_text(' ',strip=True)
-            self.assertIn('100.0 '+unit,text)
-            self.assertLess(text.index('종가'),text.index('콜 OI'))
-        r=ind.latest_result(series(),'Momentum',False,'')
-        q.attach_indicator_quality(r,series().iloc[:-1],ASOF,'test',['price'])
-        page=BeautifulSoup(q.indicator_quality_html([r],[]),'html.parser')
-        self.assertFalse(page.select_one('details').has_attr('open'))
-        self.assertIsNone(page.select_one('.warn-banner').find_parent('details'))
-        self.assertIn('stale',page.select_one('.warn-banner').get_text())
-
-    def test_calculator_javascript_invalidates_old_result(self):
-        import subprocess
-        from bs4 import BeautifulSoup
-        levels=options_report.Levels(spot=250000.,max_pain=255000.,dex_neutral_maxpain=None,
-            zero_gamma=240000.,call_wall=300000.,put_wall=220000.,strike_min=200000.,strike_max=320000.)
-        soup=BeautifulSoup(options_report._stock_risk_planner_html('test',250000.,levels,build_scenarios(levels)),'html.parser')
-        self.assertIsNone(soup.select_one('.observation-levels').find_parent(class_='risk-planner'))
-        script=soup.script.string
-        harness=r'''
-const vm=require('vm'),assert=require('assert');
-const listeners={}; let click;
-const fields=Object.fromEntries(['entry','quantity','loss'].map(k=>[k,{value:'',addEventListener:(ev,fn)=>listeners[k+ev]=fn}]));
-const out={textContent:''};
-const root={querySelector:s=>s==='.risk-result'?out:s==='.risk-button'?{addEventListener:(ev,fn)=>click=fn}:fields[s.match(/data-field="([a-z]+)"/)[1]],querySelectorAll:()=>Object.values(fields)};
-vm.runInNewContext(SCRIPT,{document:{getElementById:()=>root}});
-function calc(){fields.entry.value='250000';fields.quantity.value='10';fields.loss.value='100000';click();assert(out.textContent.includes('240,000원'));assert(out.textContent.includes('수량 10주'));assert(out.textContent.includes('매수가 250,000원'));}
-for(const field of ['entry','quantity','loss'])for(const event of ['input','change']){calc();fields[field].value='200000';listeners[field+event]();assert(!out.textContent.includes('240,000'));assert(out.textContent.includes('다시'));}
-for(const [entry,qty,loss] of [['250000','0','100000'],['250000','1.5','100000'],['250000','10','2500000'],['250000','10','']]){fields.entry.value=entry;fields.quantity.value=qty;fields.loss.value=loss;click();assert(!out.textContent.includes('내 손실한도 가격'));}
-'''.replace('SCRIPT',json.dumps(script))
-        checked=subprocess.run(['node','-e',harness],capture_output=True,text=True,encoding='utf-8')
-        self.assertEqual(checked.returncode,0,checked.stderr)
+        self.assertTrue(_report_is_current({'options_complete':True,'quality_policy_version':q.POLICY_VERSION}))
 
     def test_offline_audit_flags_future_stale_and_hash(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,4 +1,10 @@
-"""기준일 일치 관측값만 사용하는 결정론적 종합 상태. 기본 LLM 호출 없음."""
+"""4번째 탭: 세 섹션(공포탐욕지수 / 코스피200 옵션 / 삼성전자·SK하이닉스)의 핵심 수치를
+한데 모아 Claude가 '종합 판단 + 내일 시나리오'를 작성한다.
+
+투자 조언·방향 확언 금지 규약(ai_commentary.SYSTEM_PROMPT)은 그대로 적용된다 — 시나리오는
+"레벨 X 이탈 시 딜러 헤지 구조상 Y 방향으로 가속" 식의 구조 설명이지 예측이 아니다.
+ANTHROPIC_API_KEY 가 없으면 이 탭은 생성되지 않는다(combined_main이 건너뜀).
+"""
 
 from __future__ import annotations
 
@@ -86,8 +92,8 @@ def section_facts(
         "flow": f"Net DEX {net_dex/1e8:+,.0f}억 · Vanna {net_vex/1e8:+,.1f}억 · Charm {net_charm/1e8:+,.1f}억",
         "rr": rr_txt,
         "skew": skew_txt,
-        "observed_levels": [
-            f"{s['name']}: {s['value']:,.1f}, 종가 대비 {s['distance_pct']:+.2f}% ({s['position']}); {s['definition']}; {s['limitation']}"
+        "scenarios": [
+            f"{s['name']}: {s['trigger']} → {s['target']}" + (f" (무효화 {s['invalidation']})" if s.get("invalidation") else "")
             for s in scenarios
         ],
     }
@@ -100,7 +106,7 @@ def _fmt_fgi(fgi: dict) -> str:
         return "공포탐욕: 서브지수 계산 불가(데이터 부족).\n" + detail
     lines = [
         f"공포탐욕: 추세지수 {trend:.0f} / 투심지수 {sentiment:.0f} / 참고 TOTAL {total:.0f}",
-        "투심은 평활 변동성·풋콜 거래량비를 각각 역산한 점수의 평균입니다. 개별 역산 점수가 낮으면 해당 평활 원자료가 과거 대비 높은 쪽입니다. 평균만으로 두 구성의 수준이 같다고 해석할 수 없습니다.",
+        "투심 낮음=평활 변동성·풋콜 거래량비 높음; 높음=그 반대. 매매 방향은 미검증.",
         "사용 구성: " + ", ".join(fgi.get("included", list(fgi.get("indicators", {})))),
         detail,
     ]
@@ -112,16 +118,11 @@ def _fmt_opt(f: dict) -> str:
     if f.get('usage') != 'context':
         return ""
     out = [f"[{f['title']}] 기준일 {f['as_of']}"]
-    if f.get('spot') is not None: out.append(f"기초자산 기준일 종가 {f['spot']:,.1f} {f.get('spot_unit', '포인트')}")
-    labels = {'call_oi':'콜 OI','put_oi':'풋 OI','call_volume':'콜 당일 거래량','put_volume':'풋 당일 거래량'}
-    for key in ('call_oi','put_oi','call_volume','put_volume'):
+    if f.get('spot') is not None: out.append(f"기초자산 {f['spot']:,.1f}")
+    allowed = ('call_oi','put_oi','call_volume','put_volume')
+    for key in allowed:
         value=f.get('observations',{}).get(key)
-        if isinstance(value,(int,float)): out.append(f"{labels[key]}: {value:,.0f}계약")
-    obs=f.get('observations',{})
-    if isinstance(obs.get('call_oi'),(int,float)) and obs['call_oi']>0 and isinstance(obs.get('put_oi'),(int,float)):
-        out.append(f"풋/콜 OI 비율: {obs['put_oi']/obs['call_oi']:.2f}")
-    if isinstance(obs.get('call_volume'),(int,float)) and obs['call_volume']>0 and isinstance(obs.get('put_volume'),(int,float)):
-        out.append(f"풋/콜 거래량 비율: {obs['put_volume']/obs['call_volume']:.2f}")
+        if isinstance(value,(int,float)): out.append(f"{key}: {value:,.0f}")
     out.append("위 수량은 방향성·딜러 순포지션을 식별하지 못한다.")
     return "\n".join(out)
 
@@ -142,8 +143,7 @@ def build_outlook_prompt(as_of: date, fgi: dict, opt_facts: list[dict]) -> str:
         parts.append(_fmt_opt(f))
         parts.append("")
     parts.append(
-        "주식 초보자가 네 상품의 차이를 이해하도록 먼저 KFGI의 추세·투심 상태를 설명하고, 이어 정규월물·위클리·삼성전자·SK하이닉스를 각각 최소 한 문장씩 빠짐없이 비교하라. "
-        "OI는 아직 청산되지 않은 계약 잔량, 거래량은 오늘 거래된 계약 수라고 짧게 풀어라. 제공된 현재 상태와 관측 수량만 설명하라. 연구용 옵션 레벨은 입력에 없으므로 만들지 말라. OI는 롱/숏 소유자를 식별하지 못한다. "
+        "제공된 지표의 현재 상태와 관측 수량만 설명하라. 연구용 옵션 레벨은 입력에 없으므로 만들지 말라. OI는 롱/숏 소유자를 식별하지 못한다. "
         "Wall 위치만으로 헤지 방향·지지·저항·돌파 후 가속을 추론하지 말라. "
         "Zero Gamma의 전역 부호 반전 불변성은 계약별 부호 변경에는 성립하지 않는다. "
         "MaxPain은 최소 내재가치 계산이지 수렴 예측이 아니다. "
@@ -157,24 +157,29 @@ def build_outlook_prompt(as_of: date, fgi: dict, opt_facts: list[dict]) -> str:
 
 
 def build_outlook_section(as_of: date, fgi: dict | None, opt_facts: list[dict]) -> str | None:
-    opt_facts = [f for f in opt_facts if f.get('usage') == 'context'
-                 and f.get('as_of') == as_of.isoformat()]
     if fgi is None or not opt_facts:
         return None
-    eligible = {k:v for k,v in fgi.get('indicators', {}).items()
-                if k in fgi.get('included', []) and fgi.get('quality', {}).get(k, {}).get('usage') == 'context'}
-    paragraphs = [_fmt_fgi(dict(fgi, indicators=eligible, included=list(eligible)))]
-    scores = [f"{k} {v:.1f}점" for k,v in eligible.items() if k in ('Volatility', 'Put/Call Ratio')]
-    if scores:
-        paragraphs.append('투심 구성별 점수: ' + ' / '.join(scores) + '. 두 지표는 각각의 평활 원자료 백분위를 역산합니다. 평균만으로 구성별 차이가 사라지지 않습니다.')
-    paragraphs.append('OI는 아직 청산되지 않은 계약 잔량, 거래량은 기준일 거래된 계약 수입니다. 두 수량은 투자자의 의도·방향 또는 실제 헤지수요를 식별하지 못합니다.')
-    paragraphs.extend(_fmt_opt(f) for f in opt_facts)
-    paragraphs.append('활용 순서: 기준일과 실제 보유 종목의 최신 시세를 확인하고, 공포탐욕지수의 사용 구성과 개별 점수를 함께 비교하세요. 옵션 관측은 시장 맥락을 보충합니다. 개별 기업 실적·공시·보유비중과 투자기간은 이 리포트 밖에서 확인해야 합니다. 연구 패널의 관찰가격은 목표가가 아니며 개인 손실예산 계산은 실제 체결을 보장하지 않습니다.')
-    body = '</p><p>'.join(_html.escape(p).replace('\n', '<br/>') for p in paragraphs)
+    prompt = build_outlook_prompt(as_of, fgi, opt_facts)
+    # max_tokens: 한국어 12~18문장이면 ~2,000+ 토큰이라 1,600에선 자주 잘렸다.
+    # 잘린 응답은 generate_commentary가 stop_reason으로 걸러 None을 준다(탭 생략).
+    text = generate_commentary(prompt, max_tokens=2600)
+    if not text:
+        return None
+
+    # 게시 전 검증: 산문 속 레벨 숫자가 실제 계산으로 넘긴 값과 일치하는지 대조한다.
+    # LLM이 지어냈거나 잘못 옮겨 적은 레벨(예: 1,046 → 1,064)을 잡는다.
+    unverified = _unverified_numbers(text, prompt)
+    if unverified:
+        return None  # 확인된 숫자 오류가 있는 해설은 게시하지 않는다.
+    warn_html = ""
+
+    body = _html.escape(text).replace("\n\n", "</p><p>").replace("\n", "<br/>")
     return f"""
     <div class="section-block">
       <h2>종합 상태 — 판단용 맥락</h2>
-      <div class="info-banner">기준일 {as_of.isoformat()} 마감 관측값의 결정론적 요약입니다. 실시간 시세가 아니며 연구 모형은 각 탭의 접힌 패널에서 확인할 수 있습니다.</div>
-      <div class="beginner-note" style="font-size:14px;line-height:1.85"><p>{body}</p></div>
+      <div class="info-banner">아래는 품질 게이트를 통과한 관측 맥락만 Claude가 종합한 것입니다. 연구용 가정값은 제외했으며 방향 예측·투자 조언이
+      아닙니다. 기준일 {as_of.isoformat()} 마감 데이터.</div>
+      {warn_html}
+      <div class="ai-note" style="font-size:14px;line-height:1.85"><p>{body}</p></div>
     </div>
     """

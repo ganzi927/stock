@@ -108,7 +108,7 @@ def _beginner_model_explanation(
     positioning_skew: dict | None,
 ) -> str:
     """연구 패널 안에서만 보이는 결정론적 설명. 모델값을 판단용 AI로 보내지 않는다."""
-    sentences = [f"기준일 종가는 {spot:,.1f}입니다."]
+    sentences = [f"현재가는 {spot:,.1f}입니다."]
 
     def describe(label: str, value: float | None, key: str | None = None) -> None:
         if value is None:
@@ -119,7 +119,7 @@ def _beginner_model_explanation(
         pot_text = ""
         if key and pot.get(key) is not None:
             pot_text = f" 모형상 만기 전 터치확률은 {pot[key]*100:.1f}%입니다."
-        sentences.append(f"{label}은 {value:,.1f}로 기준일 종가 대비 {distance}에 있습니다.{pot_text}")
+        sentences.append(f"{label}은 {value:,.1f}로 현재가보다 {distance}에 있습니다.{pot_text}")
 
     describe("Call Wall(콜 감마 가중 OI 집중 행사가)", levels.call_wall, "call_wall")
     describe("Put Wall(풋 감마 가중 OI 집중 행사가)", levels.put_wall, "put_wall")
@@ -134,7 +134,7 @@ def _beginner_model_explanation(
         side = "콜" if oi_skew > 0 else "풋" if oi_skew < 0 else "양쪽"
         sentences.append(f"OI 쏠림도는 {oi_skew:+.1f}%로 수량 기준 {side} 쪽이 더 많지만, 누가 매수·매도했는지는 이 값으로 알 수 없습니다.")
     sentences.append(
-        "Wall은 감마 계산 입력에, Zero Gamma는 여기에 딜러 부호 가정까지 의존합니다. MaxPain은 선택한 체인의 OI와 행사가로 계산합니다. 모두 연구값입니다. "
+        "Wall·Zero Gamma·MaxPain은 r·q·IV와 딜러 부호 가정에 의존하는 연구값입니다. "
         "지지·저항이나 다음 가격을 뜻하지 않으며, PoT도 옵션 가격으로 계산한 위험중립 터치확률이지 실제 도달 확률이 아닙니다."
     )
     return '<div class="beginner-note"><span class="beginner-note-label">모형 읽기 (초보자용)</span>'+" ".join(sentences)+"</div>"
@@ -176,12 +176,12 @@ def _stock_risk_planner_html(planner_id: str, spot: float, levels: Levels, scena
 
     def level_card(caption: str, level: tuple[str, float] | None) -> str:
         if level is None:
-            return f'<div class="risk-level"><span>{caption}</span><b>N/A</b><small>종가 한쪽에 계산 가능한 레벨이 없습니다.</small></div>'
+            return f'<div class="risk-level"><span>{caption}</span><b>N/A</b><small>현재가 한쪽에 계산 가능한 레벨이 없습니다.</small></div>'
         name, value = level
         pct = (value - spot) / spot * 100
         return (
             f'<div class="risk-level"><span>{caption}</span><b>{value:,.0f}원</b>'
-            f'<small>{html.escape(name)} · 기준일 종가 대비 {pct:+.1f}%</small></div>'
+            f'<small>{html.escape(name)} · 현재가 대비 {pct:+.1f}%</small></div>'
         )
 
     return f"""
@@ -295,7 +295,7 @@ def build_section_html(
     at_spot = [(n, v, k) for n, v, k in named if v is not None and v == spot]
 
     level_rows = "".join(_level_row(n, v, spot, pot=pot.get(k)) for n, v, k in above)
-    level_rows += _level_row("Spot (기준일 종가)", spot, spot, is_spot=True)
+    level_rows += _level_row("Spot (현재가)", spot, spot, is_spot=True)
     level_rows += "".join(_level_row(n, v, spot, pot=pot.get(k)) for n, v, k in at_spot)
     level_rows += "".join(_level_row(n, v, spot, pot=pot.get(k)) for n, v, k in below)
     zg_name = "Zero Gamma"

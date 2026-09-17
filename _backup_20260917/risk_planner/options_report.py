@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from datetime import date
-import html
-import math
 
 from charts import gauge_chart, zone_colors_css, zone_label
 from dealer_positioning import SIGN_CONVENTION_CAVEAT, Levels
@@ -78,16 +76,6 @@ EXTRA_STYLE = """
 .summary-card .summary-line b { font-weight: 600; }
 .summary-card .summary-target { color: #3D5C36; }
 .summary-card .summary-invalid { color: #8A4A47; }
-.risk-planner { background:#F7F6F3; border:1px solid var(--border); border-radius:12px; padding:20px; margin:18px 0 24px; }
-.risk-planner h3 { margin:0 0 8px; font-size:16px; }
-.risk-levels { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:10px; margin:14px 0; }
-.risk-level { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:14px; }
-.risk-level b { display:block; font-family:'JetBrains Mono',monospace; font-size:18px; margin:4px 0; }
-.risk-form { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; margin-top:14px; }
-.risk-form label { color:var(--muted); font-size:12px; }
-.risk-form input { width:100%; margin-top:5px; border:1px solid var(--border); border-radius:8px; padding:10px; font:14px 'JetBrains Mono',monospace; color:var(--ink); background:var(--surface); }
-.risk-button { border:0; border-radius:8px; padding:10px 16px; background:var(--ink); color:white; cursor:pointer; margin-top:12px; }
-.risk-result { min-height:48px; margin-top:12px; padding:12px 14px; background:var(--surface); border-radius:8px; font-size:14px; }
 """
 
 
@@ -108,7 +96,7 @@ def _beginner_model_explanation(
     positioning_skew: dict | None,
 ) -> str:
     """연구 패널 안에서만 보이는 결정론적 설명. 모델값을 판단용 AI로 보내지 않는다."""
-    sentences = [f"기준일 종가는 {spot:,.1f}입니다."]
+    sentences = [f"현재가는 {spot:,.1f}입니다."]
 
     def describe(label: str, value: float | None, key: str | None = None) -> None:
         if value is None:
@@ -119,7 +107,7 @@ def _beginner_model_explanation(
         pot_text = ""
         if key and pot.get(key) is not None:
             pot_text = f" 모형상 만기 전 터치확률은 {pot[key]*100:.1f}%입니다."
-        sentences.append(f"{label}은 {value:,.1f}로 기준일 종가 대비 {distance}에 있습니다.{pot_text}")
+        sentences.append(f"{label}은 {value:,.1f}로 현재가보다 {distance}에 있습니다.{pot_text}")
 
     describe("Call Wall(콜 감마 가중 OI 집중 행사가)", levels.call_wall, "call_wall")
     describe("Put Wall(풋 감마 가중 OI 집중 행사가)", levels.put_wall, "put_wall")
@@ -134,108 +122,10 @@ def _beginner_model_explanation(
         side = "콜" if oi_skew > 0 else "풋" if oi_skew < 0 else "양쪽"
         sentences.append(f"OI 쏠림도는 {oi_skew:+.1f}%로 수량 기준 {side} 쪽이 더 많지만, 누가 매수·매도했는지는 이 값으로 알 수 없습니다.")
     sentences.append(
-        "Wall은 감마 계산 입력에, Zero Gamma는 여기에 딜러 부호 가정까지 의존합니다. MaxPain은 선택한 체인의 OI와 행사가로 계산합니다. 모두 연구값입니다. "
+        "Wall·Zero Gamma·MaxPain은 r·q·IV와 딜러 부호 가정에 의존하는 연구값입니다. "
         "지지·저항이나 다음 가격을 뜻하지 않으며, PoT도 옵션 가격으로 계산한 위험중립 터치확률이지 실제 도달 확률이 아닙니다."
     )
     return '<div class="beginner-note"><span class="beginner-note-label">모형 읽기 (초보자용)</span>'+" ".join(sentences)+"</div>"
-
-
-def calculate_loss_limit(entry_price: float, quantity: float, max_loss: float) -> float | None:
-    """사용자가 정한 롱 포지션 위험예산을 주당 가격으로 환산한다."""
-    try:
-        entry, qty, loss = float(entry_price), float(quantity), float(max_loss)
-    except (TypeError, ValueError):
-        return None
-    if not all(math.isfinite(v) and v > 0 for v in (entry, qty, loss)) or not qty.is_integer():
-        return None
-    limit = entry - loss / qty
-    return limit if limit > 0 and math.isfinite(limit) else None
-
-
-def _nearest_observation_levels(spot: float, levels: Levels) -> tuple[tuple[str, float] | None, tuple[str, float] | None]:
-    candidates = [
-        ("Call Wall", levels.call_wall),
-        ("상단 Gamma Wall", levels.call_wall_above),
-        ("Put Wall", levels.put_wall),
-        ("하단 Gamma Wall", levels.put_wall_below),
-        ("Zero Gamma", levels.zero_gamma),
-        ("MaxPain", levels.max_pain),
-    ]
-    finite = [(name, float(value)) for name, value in candidates if value is not None and math.isfinite(value)]
-    upper = min((x for x in finite if x[1] > spot), key=lambda x: x[1] - spot, default=None)
-    lower = min((x for x in finite if x[1] < spot), key=lambda x: spot - x[1], default=None)
-    return upper, lower
-
-
-def _stock_risk_planner_html(planner_id: str, spot: float, levels: Levels, scenarios: list[dict]) -> str:
-    safe_id = "".join(ch for ch in planner_id if ch.isascii() and ch.isalnum())
-    if not safe_id:
-        return ""
-    root_id = f"risk-planner-{safe_id}"
-    upper, lower = _nearest_observation_levels(spot, levels)
-
-    def level_card(caption: str, level: tuple[str, float] | None) -> str:
-        if level is None:
-            return f'<div class="risk-level"><span>{caption}</span><b>N/A</b><small>종가 한쪽에 계산 가능한 레벨이 없습니다.</small></div>'
-        name, value = level
-        pct = (value - spot) / spot * 100
-        return (
-            f'<div class="risk-level"><span>{caption}</span><b>{value:,.0f}원</b>'
-            f'<small>{html.escape(name)} · 기준일 종가 대비 {pct:+.1f}%</small></div>'
-        )
-
-    return f"""
-    <section class="observation-levels">
-      <h3>종가 주변 관찰가격 — 연구용</h3>
-      <p class="card-note">아래 관찰가격은 옵션 모형의 계산 레벨이며 목표가·손절가·지지·저항 추천이 아닙니다.</p>
-      <div class="risk-levels">
-        {level_card('상단 관찰가격', upper)}
-        {level_card('하단 관찰가격', lower)}
-      </div>
-    </section>
-    <div class="risk-planner" id="{root_id}">
-      <h3>내 손실한도 계산기</h3>
-      <p class="card-note">관찰가격과 독립된 개인 예산 계산입니다. 매수가 기본값은 기준일 종가이므로 실제 매수가로 수정하세요.</p>
-      <p class="card-note">감수할 최대 손실액을 사용자가 먼저 정하면 롱 포지션 기준 가격으로 환산합니다. 입력값은 저장하거나 전송하지 않습니다.</p>
-      <div class="risk-form">
-        <label>매수가(원)<input data-field="entry" type="number" min="1" step="1" value="{spot:.0f}" inputmode="decimal"></label>
-        <label>수량(주)<input data-field="quantity" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-        <label>최대 허용손실액(원)<input data-field="loss" type="number" min="1" step="1" placeholder="직접 입력" inputmode="decimal"></label>
-      </div>
-      <button class="risk-button" type="button">계산하기</button>
-      <div class="risk-result" role="status">매수가·수량·최대 허용손실액을 입력하세요.</div>
-      <p class="card-note">계산식: 매수가 − 최대 허용손실액 ÷ 수량. 수수료·세금·갭 하락·슬리피지는 반영하지 않으며 실제 손실은 설정액을 초과할 수 있습니다.</p>
-    </div>
-    <script>
-    (() => {{
-      const root = document.getElementById('{root_id}');
-      if (!root) return;
-      const read = name => Number(root.querySelector(`[data-field="${{name}}"]`).value);
-      const output = root.querySelector('.risk-result');
-      const formatWon = value => Math.round(value).toLocaleString('ko-KR') + '원';
-      const clearResult = () => {{ output.textContent = '입력값이 변경되었습니다. 계산하기를 다시 눌러 주세요.'; }};
-      root.querySelectorAll('input').forEach(input => {{
-        input.addEventListener('input', clearResult);
-        input.addEventListener('change', clearResult);
-      }});
-      root.querySelector('.risk-button').addEventListener('click', () => {{
-        const entry = read('entry');
-        const qty = read('quantity');
-        const loss = read('loss');
-        if (![entry, qty, loss].every(Number.isFinite) || entry <= 0 || qty <= 0 || loss <= 0 || !Number.isInteger(qty)) {{
-          output.textContent = '매수가와 손실액은 0보다 큰 숫자, 수량은 1주 이상의 정수로 입력하세요.';
-          return;
-        }}
-        const limit = entry - loss / qty;
-        if (!Number.isFinite(limit) || limit <= 0) {{
-          output.textContent = '설정 손실액이 매수금액 이상입니다. 입력값을 다시 확인하세요.';
-          return;
-        }}
-        const decline = (entry - limit) / entry * 100;
-        output.textContent = `내 손실한도 가격 ${{formatWon(limit)}} · 매수가 대비 -${{decline.toFixed(2)}}% · 계산 입력: 매수가 ${{formatWon(entry)}}, 수량 ${{qty.toLocaleString('ko-KR')}}주, 손실예산 ${{formatWon(loss)}}`;
-      }});
-    }})();
-    </script>"""
 
 
 def build_section_html(
@@ -258,7 +148,6 @@ def build_section_html(
     risk_reversal: tuple[float | None, float | None, float | None] | None = None,
     synth_df=None,
     positioning_skew: dict | None = None,
-    risk_planner_id: str | None = None,
 ) -> str:
     level_marks = {
         "call_wall": levels.call_wall,
@@ -273,10 +162,6 @@ def build_section_html(
     pot = pot or {}
     beginner_model_html = _beginner_model_explanation(
         spot, levels, pot, risk_reversal, positioning_skew
-    )
-    risk_planner_html = (
-        _stock_risk_planner_html(risk_planner_id, spot, levels, scenarios)
-        if risk_planner_id else ""
     )
 
     # 위/아래 순서로 정렬해 표시 (call_wall/put_wall이 스팟 어느 쪽에 있을지 모르므로
@@ -295,7 +180,7 @@ def build_section_html(
     at_spot = [(n, v, k) for n, v, k in named if v is not None and v == spot]
 
     level_rows = "".join(_level_row(n, v, spot, pot=pot.get(k)) for n, v, k in above)
-    level_rows += _level_row("Spot (기준일 종가)", spot, spot, is_spot=True)
+    level_rows += _level_row("Spot (현재가)", spot, spot, is_spot=True)
     level_rows += "".join(_level_row(n, v, spot, pot=pot.get(k)) for n, v, k in at_spot)
     level_rows += "".join(_level_row(n, v, spot, pot=pot.get(k)) for n, v, k in below)
     zg_name = "Zero Gamma"
@@ -311,23 +196,34 @@ def build_section_html(
 
     scenario_html = ""
     for sc in scenarios:
+        invalidation_row = (
+            f'<div class="scenario-row" style="color:#8A4A47">무효화 레벨: <b style="color:#8A4A47">{sc["invalidation"]}</b></div>'
+            if sc.get("invalidation")
+            else ""
+        )
         scenario_html += f"""
         <div class="scenario-card">
-          <div class="scenario-name">{html.escape(sc['name'])}</div>
-          <div class="scenario-row">관측 레벨: <b>{sc['value']:,.1f}</b> · 종가 대비 {sc['distance_pct']:+.2f}% ({sc['position']})</div>
-          <div class="scenario-row">정의: {html.escape(sc['definition'])}</div>
-          <div class="scenario-row">한계: {html.escape(sc['limitation'])}</div>
+          <div class="scenario-name">{sc['name']}</div>
+          <div class="scenario-row">Trigger: <b>{sc['trigger']}</b></div>
+          <div class="scenario-row">Target: <b>{sc['target']}</b></div>
+          {invalidation_row}
+          <div class="scenario-row" style="margin-top:10px">{sc['note']}</div>
         </div>"""
 
     summary_html = ""
     if scenarios:
         cards = ""
         for sc in scenarios:
+            invalid_line = (
+                f'<div class="summary-line summary-invalid">무효화 {sc["invalidation"]}</div>'
+                if sc.get("invalidation")
+                else ""
+            )
             cards += f"""
         <div class="summary-card">
-          <div class="summary-name">{html.escape(sc['name'])}</div>
-          <div class="summary-line">관측값 <b>{sc['value']:,.1f}</b></div>
-          <div class="card-note">종가 대비 {sc['distance_pct']:+.2f}% · {sc['position']}</div>
+          <div class="summary-name">{sc['name']}</div>
+          <div class="summary-line summary-target">목표 <b>{sc['target']}</b></div>
+          {invalid_line}
         </div>"""
         summary_html = f'<div class="summary-callout">{cards}</div>'
 
@@ -439,7 +335,6 @@ def build_section_html(
       </table>
       <div class="card-note" style="margin-top:6px">PoT는 해당 만기까지 상수 IV GBM 모형의 <b>위험중립 터치확률</b>입니다. 실제 확률·익일 확률·서로 배타적인 시나리오 확률이 아닙니다. ATM IV 하나를 사용하므로 스큐·점프·변동성 변화를 반영하지 않습니다.</div>
       {beginner_model_html}
-      {risk_planner_html}
       {commentary_html}
 
       <h2>딜러 플로우</h2>
@@ -451,7 +346,7 @@ def build_section_html(
       {rr_html}
       {synth_html}
 
-      <h2>관측 레벨의 정의와 한계</h2>
+      <h2>시나리오</h2>
       <div class="scenario-grid">{scenario_html}</div>
     </div>
     """

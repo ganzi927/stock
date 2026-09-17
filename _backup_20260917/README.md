@@ -52,11 +52,11 @@
 
 | spec | 상태 | 마지막 정합 확인 | 알려진 코드 vs 문서 드리프트 |
 |---|---|---|---|
-| 00-architecture | STABLE | 2026-09-17 | report_contract_version=3 및 결정론적 종합 상태 계약 반영 |
-| 10-kfgi | STABLE | 2026-09-17 | 역산 점수·P/C 당일 raw/MA5·Strength 정의 정합. 과거 RECONCILIATION.md의 창/평활은 현행 사양과 다름 |
-| 20-kospi200-options | STABLE | 2026-09-17 | 가격 경로 계약을 관측 레벨·정의·한계로 교체; 모델/데이터 한계는 METHODOLOGY_AUDIT.md |
-| 30-stock-options | STABLE | 2026-09-17 | 관찰가격/개인 계산 분리, 입력 변경 시 결과 초기화; 위클리 개별주식옵션 미통합 |
-| 40-outlook-ai | STABLE | 2026-09-17 | 기본 LLM 0회 결정론적 종합; 연구 AI는 별도 opt-in |
+| 00-architecture | STABLE | 2026-09-08 | 없음 |
+| 10-kfgi | STABLE | 2026-09-16 | `RECONCILIATION.md §5`는 Volatility 50일MA·Breadth Summation·창 504일로 적혀 있으나 **현행 코드는 20일MA·McClellan Oscillator·창 252일**(의도적 이탈, `indicators.py` 주석). spec은 코드 기준으로 기술. |
+| 20-kospi200-options | STABLE | 2026-09-16 | 감사 정정 반영; 모델/데이터 한계는 METHODOLOGY_AUDIT.md |
+| 30-stock-options | STABLE | 2026-09-16 | 위클리 개별주식옵션 미통합(명시적 제외) |
+| 40-outlook-ai | STABLE | 2026-09-16 | 숫자 게이트 범위는 제한적; 완전 사실 검증 아님 |
 | 50-data-pipeline | STABLE | 2026-09-08 | KOSDAQ(`ksq_bydd_trd`) 미이용신청 → KOSPI만 |
 | 60-automation | STABLE | 2026-09-10 | 없음 (아침 트리거 07:30→08:00, 수동 실행 `리포트생성.cmd` 추가 — REQ-AUTO-2) |
 | 99-glossary | STABLE | 2026-09-08 | — |
@@ -71,10 +71,6 @@
 
 ## 품질 게이트 v2
 
-[80-quality.md](80-quality.md)가 이전 00/10/20/30/40/50/70의 충돌하는 사용범위 규약보다 우선한다. 정합 확인: 2026-09-17. 상태 STABLE(코드·fixture 정합), 실데이터/공식 기준자료 완전성은 미검증.
+[80-quality.md](80-quality.md)가 이전 00/10/20/30/40/50/70의 충돌하는 사용범위 규약보다 우선한다. 정합 확인: 2026-09-16. 상태 STABLE(코드·fixture 정합), 실데이터/공식 기준자료 완전성은 미검증.
 
 담당: data_quality.py, reference_data.py, validate_inputs.py 및 각 진입점/리포트/AI.
-
-2026-09-17 초보 투자 보조 리뷰 반영: 종가·단위 우선 노출, 기술 품질표 접힘과 핵심 경고 유지,
-관측 레벨 계약, 기본 종합 LLM 0회, 역산 점수 설명 및 계산기 입력 변경 회귀 검증.
-`tests/test_math.py` 전체 통과, `unittest discover -s tests -p "test_*.py"` 40개 통과.

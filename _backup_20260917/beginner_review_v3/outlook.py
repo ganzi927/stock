@@ -100,7 +100,7 @@ def _fmt_fgi(fgi: dict) -> str:
         return "공포탐욕: 서브지수 계산 불가(데이터 부족).\n" + detail
     lines = [
         f"공포탐욕: 추세지수 {trend:.0f} / 투심지수 {sentiment:.0f} / 참고 TOTAL {total:.0f}",
-        "투심은 평활 변동성·풋콜 거래량비를 각각 역산한 점수의 평균입니다. 개별 역산 점수가 낮으면 해당 평활 원자료가 과거 대비 높은 쪽입니다. 평균만으로 두 구성의 수준이 같다고 해석할 수 없습니다.",
+        "투심 낮음=평활 변동성·풋콜 거래량비 높음; 높음=그 반대. 매매 방향은 미검증.",
         "사용 구성: " + ", ".join(fgi.get("included", list(fgi.get("indicators", {})))),
         detail,
     ]
